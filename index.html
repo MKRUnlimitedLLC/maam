@@ -199,6 +199,22 @@
     @media (display-mode: standalone) {
       .home { padding-top: 8px; }
     }
+    .setup { padding: 12px 20px 24px; gap: 12px; max-width: 560px; }
+    .setup h2 { margin: 4px 0 0; font-size: 22px; letter-spacing: 0.08em; text-transform: uppercase; }
+    .steps { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 4px; }
+    .step-pill {
+      font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+      padding: 6px 10px; border-radius: 999px; border: 1px solid #333; color: #777;
+    }
+    .step-pill.on { border-color: #2ecc71; color: #2ecc71; }
+    .step-pill.done { border-color: #555; color: #bbb; }
+    .setup-pane { display: none; flex-direction: column; gap: 10px; }
+    .setup-pane.on { display: flex; }
+    .wave {
+      width: 100%; height: 72px; background: #141414; border: 1px solid #333;
+      border-radius: 10px; display: block;
+    }
+    .setup .stack { margin-top: 4px; }
   </style>
 </head>
 <body>
@@ -273,6 +289,54 @@
           <button class="ctrl mark" id="btnMark">Mark</button>
           <button class="ctrl" id="btnMos">MOS</button>
           <button class="ctrl" id="btnTail">Tail</button>
+        </div>
+      </div>
+    </section>
+
+
+    <section class="screen" id="view-setup">
+      <div class="topbar"><span>Morning setup</span><span class="badge pro" id="setupBadge">DAY OPEN</span></div>
+      <div class="home setup" style="display:flex;flex-direction:column;">
+        <h2>First unlock today</h2>
+        <p class="fine">Step through once. Train Your Mark is required for the MAAM path. Fingerprints only — no raw audio is stored.</p>
+        <div class="steps">
+          <span class="step-pill on" id="pill1">1 · Train</span>
+          <span class="step-pill" id="pill2">2 · Test</span>
+          <span class="step-pill" id="pill3">3 · Board</span>
+        </div>
+
+        <div class="setup-pane on" id="setupStep1">
+          <h2>Train Your Mark</h2>
+          <p class="lede" style="font-size:15px;max-width:none">Record the sound you will use as the mark. Whistle, clap, snap, tone, clicker, spoken word, or real sticks. The app listens and builds a print (waveform bands). That print is the mark: when Listen hears it, sticks slam and the take is logged.</p>
+          <canvas class="wave" id="setupWave" width="560" height="72" aria-label="Mark fingerprint"></canvas>
+          <div class="dots" id="setupDots"></div>
+          <p class="fine" id="setupTrainStatus">Tap Record, then make the same sound. Same room noise helps. Five samples.</p>
+          <div class="stack">
+            <button class="big primary" id="btnSetupRec">Record sample 1 of 5</button>
+            <button class="big ghost" id="btnSetupKeep" style="display:none">Keep yesterday’s mark</button>
+            <button class="big ghost" id="btnSetupGeneric">Skip — use generic clap today</button>
+            <button class="big primary" id="btnSetupToTest" disabled>Next · Test the mark</button>
+          </div>
+        </div>
+
+        <div class="setup-pane" id="setupStep2">
+          <h2>Test the mark</h2>
+          <p class="fine">Arm Test Listen, make the sound once. MATCH means the print is ready. NO MATCH means record again on Train.</p>
+          <div class="matchbox" id="setupMatch">READY</div>
+          <div class="stack">
+            <button class="big primary" id="btnSetupTest">Test listen</button>
+            <button class="big ghost" id="btnSetupBack1">Back · Train</button>
+            <button class="big primary" id="btnSetupToBoard">Next · Open the board</button>
+          </div>
+        </div>
+
+        <div class="setup-pane" id="setupStep3">
+          <h2>Board</h2>
+          <p class="fine">On set: fill the board, tap Listen, hold up to camera, make the mark. When the print is heard, sticks slam, flash fires, and the take is logged. Mark and sticks still work if Listen misses. Ads never appear on the board face. Dummy slate — wall clock, not LTC.</p>
+          <div class="stack">
+            <button class="big primary" id="btnSetupOpen">Open slate</button>
+            <button class="big ghost" id="btnSetupBack2">Back · Test</button>
+          </div>
         </div>
       </div>
     </section>
@@ -354,7 +418,8 @@
       proUntil: 0,
       sens: 6,
       mode: "generic",
-      prints: []
+      prints: [],
+      needMorningSetup: false
     };
 
     function isPro() { return Date.now() < (state.proUntil || 0); }
@@ -439,7 +504,7 @@
 
     function show(name) {
       if (name !== "slate") stopListen();
-      if ((name === "slate" || name === "train" || name === "log") && !isPro() && !sessionGrace) {
+      if ((name === "slate" || name === "train" || name === "log" || name === "setup") && !isPro() && !sessionGrace) {
         if (name !== "home") {
           document.querySelectorAll(".screen").forEach((s) => s.classList.toggle("on", s.id === "view-home"));
           document.querySelectorAll(".nav button").forEach((b) => b.classList.toggle("here", b.dataset.go === "home"));
@@ -450,7 +515,8 @@
       document.querySelectorAll(".screen").forEach((s) => s.classList.toggle("on", s.id === "view-" + name));
       document.querySelectorAll(".nav button").forEach((b) => b.classList.toggle("here", b.dataset.go === name));
       if (name === "log") renderLog();
-      if (name === "train") renderDots();
+      if (name === "train" || name === "setup") renderDots();
+      if (name === "setup") paintSetup();
     }
 
     async function unlockAudio() {
@@ -462,8 +528,68 @@
     function grantDay() {
       state.proUntil = Date.now() + 24 * 60 * 60 * 1000;
       sessionGrace = false;
+      state.needMorningSetup = true;
       persist();
       paintPro();
+    }
+
+    let setupStep = 1;
+    function setSetupStep(n) {
+      setupStep = n;
+      ["setupStep1","setupStep2","setupStep3"].forEach((id, i) => {
+        $(id).classList.toggle("on", i + 1 === n);
+      });
+      $("pill1").className = "step-pill" + (n === 1 ? " on" : (n > 1 ? " done" : ""));
+      $("pill2").className = "step-pill" + (n === 2 ? " on" : (n > 2 ? " done" : ""));
+      $("pill3").className = "step-pill" + (n === 3 ? " on" : "");
+      if (n === 1) paintSetup();
+    }
+    function paintSetup() {
+      const n = state.prints.length;
+      $("setupDots").innerHTML = Array.from({length: 5}, (_, i) =>
+        `<div class="dot${i < n ? " got" : ""}${i === n && n < 5 ? " now" : ""}"></div>`
+      ).join("");
+      $("btnSetupRec").textContent = n >= 5 ? "Record extra sample" : `Record sample ${n + 1} of 5`;
+      $("btnSetupRec").disabled = false;
+      $("btnSetupToTest").disabled = n < 3;
+      $("btnSetupKeep").style.display = n >= 3 ? "block" : "none";
+      $("setupTrainStatus").textContent = n >= 5
+        ? "Print ready. That fingerprint is today’s mark. Next: test it."
+        : (n ? `Got ${n} of 5. Same sound again — whistle, clap, tone, or word.` : "Tap Record, then make the mark sound once.");
+      drawSetupWave(meanPrint());
+    }
+    function drawSetupWave(vec) {
+      const c = $("setupWave");
+      if (!c) return;
+      const ctx = c.getContext("2d");
+      const w = c.width, h = c.height;
+      ctx.fillStyle = "#141414";
+      ctx.fillRect(0, 0, w, h);
+      if (!vec || !vec.length) {
+        ctx.fillStyle = "#444";
+        ctx.font = "12px sans-serif";
+        ctx.fillText("Mark fingerprint appears here after the first sample", 16, h / 2 + 4);
+        return;
+      }
+      const gap = 4;
+      const bw = (w - gap * (vec.length + 1)) / vec.length;
+      vec.forEach((v, i) => {
+        const bh = Math.max(2, v * (h - 16));
+        ctx.fillStyle = "#2ecc71";
+        ctx.fillRect(gap + i * (bw + gap), h - 8 - bh, bw, bh);
+      });
+    }
+    function finishMorningSetup() {
+      state.needMorningSetup = false;
+      state.mode = state.prints.length >= 3 ? "trained" : "generic";
+      persist();
+      paintPro();
+      show("slate");
+    }
+    function afterUnlock() {
+      setupStep = 1;
+      setSetupStep(1);
+      show("setup");
     }
 
     const AD_MS = 8000;
@@ -492,7 +618,7 @@
         else {
           $("ad").classList.remove("on");
           grantDay();
-          show("slate");
+          afterUnlock();
         }
       };
       adTimer = requestAnimationFrame(tick);
@@ -557,6 +683,11 @@
         const msg = "Microphone permission is required. Open this in Safari over https, or Add to Home Screen from a hosted page. A file from Files often cannot use the mic.";
         if ($("status")) $("status").textContent = "MIC BLOCKED";
         $("trainStatus").textContent = msg;
+        if ($("view-setup").classList.contains("on")) {
+          $("setupTrainStatus").textContent = msg;
+          $("btnSetupRec").disabled = false;
+          recBusy = false;
+        }
         alert(msg);
         return;
       }
@@ -575,8 +706,20 @@
         $("matchBox").className = "matchbox";
       }
       listenTimer = setTimeout(() => {
-        if (test) { $("matchBox").textContent = "NO MATCH"; $("matchBox").className = "matchbox no"; }
-        if (train) { $("trainStatus").textContent = "No sound heard. Try closer to the mic."; recBusy = false; $("btnRec").disabled = false; }
+        if (test) {
+          $("matchBox").textContent = "NO MATCH"; $("matchBox").className = "matchbox no";
+          if ($("view-setup").classList.contains("on")) {
+            $("setupMatch").textContent = "NO MATCH"; $("setupMatch").className = "matchbox no";
+          }
+        }
+        if (train) {
+          $("trainStatus").textContent = "No sound heard. Try closer to the mic.";
+          recBusy = false; $("btnRec").disabled = false;
+          if ($("view-setup").classList.contains("on")) {
+            $("setupTrainStatus").textContent = "No sound heard. Closer to the mic, then Record again.";
+            $("btnSetupRec").disabled = false;
+          }
+        }
         stopListen();
       }, train || test ? 8000 : 12000);
 
@@ -616,6 +759,10 @@
               recBusy = false;
               $("btnRec").disabled = false;
               $("btnRec").textContent = state.prints.length >= 5 ? "Record extra sample" : `Record sample ${state.prints.length + 1} of 5`;
+              if ($("view-setup").classList.contains("on")) {
+                $("setupTrainStatus").textContent = `Got sample ${state.prints.length}. Print updated.`;
+                paintSetup();
+              }
               stopListen();
               return;
             }
@@ -623,6 +770,10 @@
               const ok = score >= 0.88;
               $("matchBox").textContent = ok ? `MATCH  ${score.toFixed(2)}` : `NO MATCH  ${score.toFixed(2)}`;
               $("matchBox").className = "matchbox " + (ok ? "yes" : "no");
+              if ($("view-setup").classList.contains("on")) {
+                $("setupMatch").textContent = ok ? `MATCH  ${score.toFixed(2)}` : `NO MATCH  ${score.toFixed(2)}`;
+                $("setupMatch").className = "matchbox " + (ok ? "yes" : "no");
+              }
               stopListen();
               return;
             }
@@ -758,18 +909,20 @@
       requestAnimationFrame(tickClock);
     }
 
-    $("btnOpen").addEventListener("click", () => show("slate"));
     $("btnAd").addEventListener("click", playAdSeries);
     $("btnAdFail").addEventListener("click", () => {
       $("ad").classList.remove("on");
       grantDay();
-      show("slate");
+      afterUnlock();
     });
     $("btnTip").addEventListener("click", () => {
       const url = (state.donate || "").trim();
       if (url) window.open(url, "_blank");
       else alert("Paste your Ko-fi, PayPal.me, or Cash App link in More → Donation link.");
-      if (confirm("Did you send a donation? Unlock the slate for 24 hours.")) grantDay();
+      if (confirm("Did you send a donation? Unlock the slate for 24 hours.")) {
+        grantDay();
+        afterUnlock();
+      }
     });
     $("btnMark").addEventListener("click", () => mark());
     $("btnListen").addEventListener("click", () => startListen());
@@ -827,6 +980,50 @@
     document.querySelectorAll("[data-k]").forEach((el) => {
       el.addEventListener("focus", () => document.body.classList.add("editing"));
       el.addEventListener("blur", () => { document.body.classList.remove("editing"); saveFields(); });
+    });
+
+    $("btnSetupRec").addEventListener("click", () => {
+      if (recBusy) return;
+      recBusy = true;
+      $("btnSetupRec").disabled = true;
+      $("setupTrainStatus").textContent = "Listening… make the mark sound now.";
+      startListen({ train: true });
+    });
+    $("btnSetupKeep").addEventListener("click", () => {
+      if (state.prints.length < 3) return;
+      state.mode = "trained";
+      persist();
+      paintSetup();
+      setSetupStep(2);
+    });
+    $("btnSetupGeneric").addEventListener("click", () => {
+      state.mode = "generic";
+      state.needMorningSetup = false;
+      persist();
+      paintPro();
+      show("slate");
+    });
+    $("btnSetupToTest").addEventListener("click", () => {
+      if (state.prints.length < 3) return;
+      state.mode = "trained";
+      persist();
+      $("setupMatch").textContent = "READY";
+      $("setupMatch").className = "matchbox";
+      setSetupStep(2);
+    });
+    $("btnSetupTest").addEventListener("click", () => {
+      $("setupMatch").textContent = "LISTENING…";
+      $("setupMatch").className = "matchbox";
+      startListen({ test: true });
+    });
+    $("btnSetupBack1").addEventListener("click", () => setSetupStep(1));
+    $("btnSetupToBoard").addEventListener("click", () => setSetupStep(3));
+    $("btnSetupBack2").addEventListener("click", () => setSetupStep(2));
+    $("btnSetupOpen").addEventListener("click", finishMorningSetup);
+
+    $("btnOpen").addEventListener("click", () => {
+      if (isPro() && state.needMorningSetup) { afterUnlock(); return; }
+      show("slate");
     });
 
     if ("serviceWorker" in navigator) {

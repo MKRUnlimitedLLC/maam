@@ -51,3 +51,13 @@ IPAD MVP
   Mic still needs https. file:// from Files usually cannot listen.
   Listen / Train algorithms are unchanged. Noisy-room enrollment is not proven yet.
   Not an App Store binary. Not LTC. Not a lockit box.
+
+
+MORNING SETUP
+  After you unlock the day (ads or honor tip), a first-sign-in flow opens.
+  Step 1 — Train Your Mark: record the same whistle / clap / tone / word
+  (or sticks) five times. The app stores a fingerprint, not a recording.
+  That print is the mark Listen will fire on.
+  Step 2 — Test: make the sound once; MATCH means you are ready.
+  Step 3 — Board: Listen → hold up → make the mark → take is logged.
+  You can skip to generic clap, or keep yesterday’s mark if you already trained.
