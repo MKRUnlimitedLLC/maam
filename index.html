@@ -298,10 +298,34 @@
       border-radius: 6px; padding: 8px 12px; font-size: 11px; letter-spacing: 0.08em;
       text-transform: uppercase; font-weight: 700;
     }
+    .role-row {
+      display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 8px 0 4px;
+    }
+    .role-row button {
+      appearance: none; border: 1px solid #333; background: #222; color: #eee;
+      border-radius: 999px; padding: 8px 14px; font-size: 12px; font-weight: 700;
+      letter-spacing: 0.08em; text-transform: uppercase;
+    }
+    .role-row button.on { background: #2ecc71; color: #111; border-color: #2ecc71; }
+    .value.readonly { background: transparent !important; caret-color: transparent; }
+    .value.readonly:focus { background: transparent !important; }
+    body.role-follower .master-only { display: none !important; }
+    body.role-master .follower-only { display: none !important; }
+    .controls.follower-ctrls { grid-template-columns: 1.4fr 1fr 1fr 1fr; }
+    #toast {
+      display: none; position: fixed; left: 50%; bottom: max(72px, calc(56px + env(safe-area-inset-bottom)));
+      transform: translateX(-50%); z-index: 50; max-width: min(92vw, 420px);
+      background: #1a1a1a; border: 1px solid #2ecc71; color: #eee;
+      padding: 12px 16px; border-radius: 10px; font-size: 13px; line-height: 1.35;
+      letter-spacing: 0.02em; text-align: center; box-shadow: 0 8px 24px rgba(0,0,0,.45);
+    }
+    #toast.on { display: block; animation: toastIn 180ms ease-out; }
+    @keyframes toastIn { from { opacity: 0; transform: translateX(-50%) translateY(8px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
   </style>
 </head>
-<body>
+<body class="role-master">
   <div id="flash"></div>
+  <div id="toast" role="status" aria-live="polite"></div>
   <div id="ad">
     <div class="box">
       <b id="adTitle">Ad 1 of 3</b>
@@ -331,7 +355,7 @@
     <div id="trainName">
       <h2>Name this mark</h2>
       <p id="trainNameHint" class="fine" style="color:#aaa;margin:0 0 8px">Fingerprints only — reusable across shots. Not a raw recording.</p>
-      <input id="trainNameInput" type="text" maxlength="40" autocomplete="off" enterkeyhint="done" />
+      <input id="trainNameInput" type="text" maxlength="48" autocomplete="off" enterkeyhint="done" />
       <div class="ov-btns">
         <button type="button" class="ov-yes" id="btnTrainNameSave">Save</button>
         <button type="button" class="ov-no" id="btnTrainNameMore">More samples</button>
@@ -369,11 +393,18 @@
         <h1>Second Sticks</h1>
         <p class="lede">Second Sticks. Train a sound, hold the board up, make the mark. Dummy slate for iPhone and iPad. Ads never appear on the board the camera sees.</p>
         <p class="fine">Dummy slate. The red numbers are wall-clock, not LTC. Fast enough to cut with. Not a Denecke. Working title — not a reserved App Store listing.</p>
+        <label style="display:block;font-size:12px;letter-spacing:0.1em;text-transform:uppercase;color:#888;margin-top:4px">This device</label>
+        <div class="role-row" id="homeRoleRow">
+          <button type="button" id="btnRoleMaster" class="on">Master</button>
+          <button type="button" id="btnRoleFollower">Follower</button>
+        </div>
+        <p class="fine" id="homeRoleHint">Master owns Learn frequency, full slate edit, and mark library. Follower: Train sync mark, Listen to sync, Test the mark. Default Master for single-device.</p>
         <div class="stack">
           <button class="big primary" id="btnOpen">Open slate</button>
           <button class="big ad" id="btnAd">Watch 3 ads · unlock 24 hours</button>
           <button class="big ghost" id="btnTip">Leave a donation</button>
-          <button class="big ghost" data-go="train">Train your mark sound</button>
+          <button class="big ghost master-only" data-go="train" id="btnHomeTrain">Train your mark sound</button>
+          <button class="big ghost follower-only" data-go="train" id="btnHomeTrainFollow">Train · learn sync mark</button>
         </div>
         <p class="fine" id="homeStatus"></p>
         <p class="fine">On iPad: Safari over https, Share → Add to Home Screen, then hold landscape. Microphone listen needs https. A file from Files usually cannot use the mic.</p>
@@ -418,19 +449,26 @@
         </div>
         <div class="expire-banner" id="expireBanner">Day expired after this shot — unlock again from Home</div>
         <div class="mark-strip" id="markStrip">
-          <span>Mark: <b id="activeMarkLabel">none</b></span>
+          <span>Mark: <b id="activeMarkLabel">none</b> · <span id="roleBadge">MASTER</span></span>
           <span style="display:flex;gap:6px">
             <button type="button" id="btnChangeMark">Change</button>
-            <button type="button" id="btnLearnSoundSlate">Learn sound</button>
-            <button type="button" id="btnLearnFreqSlate">Learn freq</button>
+            <button type="button" class="master-only" id="btnLearnSoundSlate">Learn sound</button>
+            <button type="button" class="master-only" id="btnLearnFreqSlate">Learn freq</button>
           </span>
         </div>
-        <div class="controls">
+        <div class="controls master-only" id="controlsMaster">
           <button class="ctrl listen" id="btnListen">Listen</button>
           <button class="ctrl mark" id="btnMark">Mark</button>
           <button class="ctrl" id="btnMos">MOS</button>
           <button class="ctrl" id="btnTail">Tail</button>
         </div>
+        <div class="controls follower-only follower-ctrls" id="controlsFollower">
+          <button class="ctrl listen" id="btnListenSync">Listen to sync</button>
+          <button class="ctrl" id="btnTestSlate">Test</button>
+          <button class="ctrl" id="btnTrainSlate">Train</button>
+          <button class="ctrl mark" id="btnMarkFollow">Mark</button>
+        </div>
+        <div class="matchbox follower-only" id="slateTestBox" style="display:none;margin:0">READY</div>
       </div>
     </section>
 
@@ -483,28 +521,40 @@
     </section>
 
     <section class="screen" id="view-train">
-      <div class="topbar"><span>Train mark sound</span></div>
+      <div class="topbar"><span id="trainTopTitle">Train mark sound</span></div>
       <div class="list settings">
-        <p class="fine">Marks are fingerprints stored on this device — reusable across shots and scenes. Sound marks: never raw WAV. Frequency marks: a Hz + narrow band (near-ultrasound may fail on some iPads). Match strictness is under More → Match threshold.</p>
+        <p class="fine master-only">Marks are fingerprints stored on this device — reusable across shots and scenes. Sound marks: never raw WAV. Frequency marks: a Hz + narrow band (near-ultrasound may fail on some iPads). Match strictness is under More → Match threshold.</p>
+        <p class="fine follower-only">Follower Train = <b>Learn sync mark</b> from the master. Sound: enroll against the same mark. Frequency: type master’s Hz, or listen while the master plays the tone and lock the heard peak. No open-band Learn frequency scan on followers.</p>
         <label>Saved marks</label>
         <div id="markList"></div>
-        <div class="mark-actions">
+        <div class="mark-actions master-only">
           <button class="big primary" id="btnLearnSound">Learn new sound</button>
           <button class="big ghost" id="btnLearnFreq">Learn frequency</button>
         </div>
+        <div class="mark-actions follower-only">
+          <button class="big primary" id="btnFollowLearnSound">Learn sync sound</button>
+          <button class="big ghost" id="btnFollowUseHz">Use master’s frequency</button>
+          <button class="big ghost" id="btnFollowListenTone">Listen · lock master’s tone</button>
+        </div>
+        <div class="follower-only" id="followHzBlock">
+          <label>Master frequency (Hz)</label>
+          <input id="followHzInput" type="number" min="1000" max="20000" step="1" placeholder="e.g. 15000" />
+          <p class="fine">Paste or type the Hz the master shared, then Use master’s frequency. Or Listen while they play the tone.</p>
+        </div>
         <div class="row-btns">
           <button type="button" id="btnRenameMark">Rename</button>
-          <button type="button" id="btnDeleteMark">Delete</button>
+          <button type="button" class="master-only" id="btnDeleteMark">Delete</button>
           <button type="button" id="btnSaveDraft" style="display:none">Save mark now</button>
         </div>
         <label>Active mark · samples</label>
         <div class="dots" id="trainDots"></div>
-        <button class="big primary" id="btnRec">Record sample 1 of 5</button>
-        <button class="big ghost" id="btnTest" disabled>Test listen (active)</button>
+        <button class="big primary master-only" id="btnRec">Record sample 1 of 5</button>
+        <button class="big primary follower-only" id="btnRecFollow">Record sync sample</button>
+        <button class="big ghost" id="btnTest" disabled>Test the mark</button>
         <div class="matchbox" id="matchBox">NO SOUND YET</div>
         <p class="fine" id="trainStatus">Mic needed. Same catch as Listen: Safari over https or Home Screen from a hosted page.</p>
-        <p class="fine">Extra samples append to the active sound mark until you tap Learn new sound. Frequency marks use Scan / manual Hz — no sample dots.</p>
-        <button class="big ghost" id="btnClearSound">Forget active mark prints</button>
+        <p class="fine master-only">Extra samples append to the active sound mark until you tap Learn new sound. Frequency marks use Scan / manual Hz — no sample dots.</p>
+        <button class="big ghost master-only" id="btnClearSound">Forget active mark prints</button>
       </div>
     </section>
 
@@ -516,6 +566,12 @@
     <section class="screen" id="view-settings">
       <div class="topbar"><span>Settings</span></div>
       <div class="list settings">
+        <label>This device is</label>
+        <select id="setRole">
+          <option value="master">Master — Learn frequency, full edit, mark library</option>
+          <option value="follower">Follower — Train sync, Listen to sync, Test</option>
+        </select>
+        <p class="fine">Single-device default is Master. Flip to Follower to mock a second board. Sync server not required for this UI mock.</p>
         <label>Project name</label>
         <input id="setProject" placeholder="My film" />
         <label>Listen mode</label>
@@ -591,10 +647,68 @@
       prints: [],
       marks: [],
       activeMarkId: null,
-      needMorningSetup: false
+      needMorningSetup: false,
+      role: "master",
+      followHz: ""
     };
+    let toastTimer = null;
 
     function isPro() { return Date.now() < (state.proUntil || 0); }
+    function isFollower() { return state.role === "follower"; }
+    function isMaster() { return !isFollower(); }
+    function showToast(msg, ms) {
+      const el = $("toast");
+      if (!el) return;
+      el.textContent = msg;
+      el.classList.add("on");
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { el.classList.remove("on"); }, ms || 3200);
+    }
+    function setRole(role, opts) {
+      const r = role === "follower" ? "follower" : "master";
+      state.role = r;
+      if (!(opts && opts.skipPersist)) persist();
+      applyRoleUi();
+      paintPro();
+    }
+    function applyRoleUi() {
+      const fol = isFollower();
+      document.body.classList.toggle("role-follower", fol);
+      document.body.classList.toggle("role-master", !fol);
+      if ($("setRole")) $("setRole").value = fol ? "follower" : "master";
+      if ($("btnRoleMaster")) $("btnRoleMaster").classList.toggle("on", !fol);
+      if ($("btnRoleFollower")) $("btnRoleFollower").classList.toggle("on", fol);
+      if ($("homeRoleHint")) {
+        $("homeRoleHint").textContent = fol
+          ? "Follower board: Learn sync mark (Train), Listen to sync, Test the mark. Shared slate fields are read-only; Camera stays local."
+          : "Master owns Learn frequency, full slate edit, and mark library. Follower: Train sync mark, Listen to sync, Test the mark. Default Master for single-device.";
+      }
+      if ($("roleBadge")) $("roleBadge").textContent = fol ? "FOLLOWER" : "MASTER";
+      if ($("trainTopTitle")) $("trainTopTitle").textContent = fol ? "Learn sync mark" : "Train mark sound";
+      if ($("followHzInput") && state.followHz != null) $("followHzInput").value = state.followHz === "" || state.followHz == null ? "" : String(state.followHz);
+      // Board fields: follower read-only except Camera
+      document.querySelectorAll("[data-k]").forEach((el) => {
+        const k = el.dataset.k;
+        const editable = !fol || k === "cam";
+        el.setAttribute("contenteditable", editable ? "true" : "false");
+        el.classList.toggle("readonly", !editable);
+      });
+      const testBox = $("slateTestBox");
+      if (testBox && !fol) {
+        testBox.style.display = "none";
+        testBox.className = "matchbox follower-only";
+        testBox.textContent = "READY";
+      }
+      // Keep Listen button copy for master
+      if (!fol && $("btnListen") && !listenOn) {
+        $("btnListen").textContent = "Listen";
+        $("btnListen").classList.remove("hot");
+      }
+      if (fol && $("btnListenSync") && !listenOn) {
+        $("btnListenSync").textContent = "Listen to sync";
+        $("btnListenSync").classList.remove("hot");
+      }
+    }
     function hoursLeft() {
       const ms = (state.proUntil || 0) - Date.now();
       if (ms <= 0) return 0;
@@ -608,6 +722,8 @@
       return "m" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
     }
     function migrateMarks() {
+      if (state.role !== "follower") state.role = "master";
+      if (state.followHz == null) state.followHz = "";
       if (!Array.isArray(state.marks)) state.marks = [];
       if (state.prints && state.prints.length && !state.marks.length) {
         const id = uid();
@@ -649,16 +765,36 @@
       if (m && m.kind === "sound") return m.prints || [];
       return state.prints || [];
     }
-    function nextMarkName(kind) {
-      const scene = (field("scene") && field("scene").textContent.trim()) || "";
+    function abbrHz(hz) {
+      const h = Math.round(Number(hz) || 0);
+      if (!h) return "Hz";
+      if (h % 1000 === 0) return (h / 1000) + "kHz";
+      // one decimal kHz when useful (15250 → 15.3kHz)
+      const k = h / 1000;
+      const one = Math.round(k * 10) / 10;
+      if (Math.abs(one * 1000 - h) <= 50) return one.toFixed(1).replace(/\.0$/, "") + "kHz";
+      return h + "Hz";
+    }
+    function nextMarkName(kind, hzOverride) {
+      const date = todayStr();
       if (kind === "frequency") {
-        const n = state.marks.filter((m) => m.kind === "frequency").length + 1;
-        if (freqCandidateHz) return "Freq " + Math.round(freqCandidateHz);
-        return "Freq " + n;
+        const hz = hzOverride || freqCandidateHz || Number(state.followHz) || 0;
+        let base = date + " · " + abbrHz(hz);
+        const taken = new Set(state.marks.map((m) => m.name));
+        if (!taken.has(base)) return base;
+        let i = 2;
+        while (taken.has(base + " · " + i)) i++;
+        return base + " · " + i;
       }
-      const n = state.marks.filter((m) => m.kind !== "frequency").length + 1;
-      if (scene && scene !== "1") return "Scene " + scene;
-      return "Mark " + n;
+      // Sound marks: today's date + Mark/Sound; number on collision
+      let base = date + " · Mark";
+      const taken = new Set(state.marks.map((m) => m.name));
+      if (!taken.has(base)) return base;
+      base = date + " · Sound";
+      if (!taken.has(base)) return base;
+      let i = 2;
+      while (taken.has(date + " · Mark " + i)) i++;
+      return date + " · Mark " + i;
     }
     function persist() {
       syncPrintsFromActive();
@@ -750,6 +886,8 @@
       const am = activeMark();
       const trainedOk = (am && am.kind === "frequency") || (ap && ap.length >= 3);
       $("setMode").value = trainedOk ? (state.mode || "trained") : "generic";
+      if ($("setRole")) $("setRole").value = state.role === "follower" ? "follower" : "master";
+      applyRoleUi();
       paintPro();
       renderLog();
       renderDots();
@@ -805,6 +943,7 @@
       if (saveBtn) saveBtn.style.display = (enrollMode === "new" && draftPrints.length >= 3) ? "inline-block" : "none";
       paintActiveMarkLabel();
       renderMarkList();
+      applyRoleUi();
     }
 
     function show(name) {
@@ -946,8 +1085,14 @@
     function stopListen() {
       listenOn = false;
       recBusy = false;
-      $("btnListen").classList.remove("hot");
-      $("btnListen").textContent = "Listen";
+      if ($("btnListen")) {
+        $("btnListen").classList.remove("hot");
+        $("btnListen").textContent = "Listen";
+      }
+      if ($("btnListenSync")) {
+        $("btnListenSync").classList.remove("hot");
+        $("btnListenSync").textContent = "Listen to sync";
+      }
       $("board").classList.remove("listening");
       if (listenTimer) { clearTimeout(listenTimer); listenTimer = null; }
       if (listenRaf) { cancelAnimationFrame(listenRaf); listenRaf = null; }
@@ -1039,6 +1184,11 @@
       if ($("view-setup").classList.contains("on")) {
         $("setupMatch").textContent = txt;
         $("setupMatch").className = "matchbox " + (ok ? "yes" : "no");
+      }
+      const stb = $("slateTestBox");
+      if (stb && isFollower() && stb.style.display !== "none") {
+        stb.textContent = txt;
+        stb.className = "matchbox follower-only " + (ok ? "yes" : "no");
       }
     }
     function readMicFrame(time, freq) {
@@ -1180,12 +1330,17 @@
     }
     function startLearnNewSound() {
       if (!isPro() && !sessionGrace) { show("home"); return; }
+      // Followers may enroll sync sound; masters invent new marks.
       enrollMode = "new";
       draftPrints = [];
       openTrainReady();
       paintPro();
     }
     function openFreqLearn() {
+      if (isFollower()) {
+        showToast("Followers don’t open-band Learn frequency — use master’s Hz or Listen · lock tone.");
+        return;
+      }
       if (!isPro() && !sessionGrace) { show("home"); return; }
       if (recBusy) return;
       enrollMode = "freq";
@@ -1360,12 +1515,122 @@
       beginEnrollCapture({ zeroAtMs: 0 });
     }
 
+
+    function saveFollowFrequency(hz, nameHint) {
+      const h = Math.round(Number(hz));
+      if (!isFinite(h) || h < 1000 || h > 20000) {
+        alert("Enter a frequency between 1000 and 20000 Hz.");
+        return false;
+      }
+      state.followHz = String(h);
+      const id = uid();
+      freqCandidateHz = h;
+      const name = nameHint || nextMarkName("frequency", h);
+      state.marks.push({ id, name, kind: "frequency", hz: h, bandHz: 80, prints: [], created: Date.now() });
+      state.activeMarkId = id;
+      state.mode = "trained";
+      if ($("setMode")) $("setMode").value = "trained";
+      syncPrintsFromActive();
+      persist();
+      paintPro();
+      renderDots();
+      showToast("Locked sync frequency " + h + " Hz.");
+      return true;
+    }
+    function useMasterFrequency() {
+      if (!isPro() && !sessionGrace) { show("home"); return; }
+      const raw = ($("followHzInput") && $("followHzInput").value) || state.followHz || "";
+      saveFollowFrequency(raw);
+    }
+    async function listenLockMasterTone() {
+      if (!isPro() && !sessionGrace) { show("home"); return; }
+      if (recBusy || listenOn) stopListen();
+      $("trainStatus").textContent = "Listening for master’s tone… hold near the speaker (~2.5s).";
+      try {
+        const mic = await openMic();
+        micStream = mic.stream;
+        analyser = mic.an;
+        try { analyser.fftSize = 2048; } catch (e) {}
+      } catch (err) {
+        $("trainStatus").textContent = "Mic blocked — need Safari https / Home Screen.";
+        return;
+      }
+      listenOn = true;
+      const sr = audio.sampleRate || 44100;
+      const nyquist = sr / 2;
+      const frames = [];
+      const t0 = performance.now();
+      const LOCK_MS = 2500;
+      await new Promise((resolve) => {
+        const tick = () => {
+          if (!listenOn) { resolve(); return; }
+          const freq = new Uint8Array(analyser.frequencyBinCount);
+          analyser.getByteFrequencyData(freq);
+          frames.push(freq.slice(0));
+          if (performance.now() - t0 < LOCK_MS) listenRaf = requestAnimationFrame(tick);
+          else resolve();
+        };
+        listenRaf = requestAnimationFrame(tick);
+      });
+      stopListen();
+      if (!frames.length) {
+        $("trainStatus").textContent = "No tone locked — try again closer to master’s speaker.";
+        return;
+      }
+      const nBins = frames[0].length;
+      const avg = new Float32Array(nBins);
+      frames.forEach((f) => { for (let i = 0; i < nBins; i++) avg[i] += f[i]; });
+      for (let i = 0; i < nBins; i++) avg[i] /= frames.length;
+      const binW = nyquist / nBins;
+      const lo = Math.max(1000, Math.floor(1000 / binW));
+      const hi = Math.min(nBins - 2, Math.ceil(Math.min(20000, nyquist * 0.96) / binW));
+      let bestI = lo, bestV = avg[lo];
+      for (let i = lo; i <= hi; i++) {
+        if (avg[i] > bestV) { bestV = avg[i]; bestI = i; }
+      }
+      const hz = Math.round(bestI * binW);
+      if (bestV < 12) {
+        $("trainStatus").textContent = "Peak too weak (" + Math.round(bestV) + "). Have master play louder / closer.";
+        return;
+      }
+      if ($("followHzInput")) $("followHzInput").value = String(hz);
+      state.followHz = String(hz);
+      saveFollowFrequency(hz);
+      $("trainStatus").textContent = "Locked onto " + hz + " Hz from heard peak. Test the mark next.";
+    }
+    function startSlateTest() {
+      if (!isPro() && !sessionGrace) { show("home"); return; }
+      const am = activeMark();
+      const ap = activePrints();
+      if (!(am && am.kind === "frequency") && ap.length < 3) {
+        alert("Train a sync mark first (sound samples or master’s frequency).");
+        return;
+      }
+      const stb = $("slateTestBox");
+      if (stb) {
+        stb.style.display = "flex";
+        stb.textContent = "LISTENING…";
+        stb.className = "matchbox follower-only";
+      }
+      startListen({ test: true, slateTest: true });
+    }
+
     async function startListen(opts) {
       const test = !!(opts && opts.test);
       const train = !!(opts && opts.train);
+      const syncListen = !!(opts && opts.syncListen) || (isFollower() && !test && !train);
       if (mos && !test && !train) return;
       if (listenOn && !test && !train) { stopListen(); return; }
       if (!isPro() && !sessionGrace && !test && !train) { show("home"); return; }
+      if (syncListen && !test && !train) {
+        const am0 = activeMark();
+        const ap0 = activePrints();
+        const ready0 = (am0 && am0.kind === "frequency" && am0.hz > 0) || (ap0 && ap0.length >= 3);
+        if (!ready0) {
+          alert("Train a sync mark first (Learn sync sound, Use master’s frequency, or Listen · lock tone).");
+          return;
+        }
+      }
       // Legacy train path: countdown UX owns enroll; if called directly, enroll 1s.
       if (train) {
         if (!recBusy) {
@@ -1401,10 +1666,17 @@
       baseline = 0.004;
       listenOn = true;
       if (!test) {
-        $("btnListen").classList.add("hot");
-        $("btnListen").textContent = "Listening";
+        if (syncListen && $("btnListenSync")) {
+          $("btnListenSync").classList.add("hot");
+          $("btnListenSync").textContent = "Listening…";
+        } else if ($("btnListen")) {
+          $("btnListen").classList.add("hot");
+          $("btnListen").textContent = "Listening";
+        }
         $("board").classList.add("listening");
-        $("status").textContent = "LISTENING";
+        $("status").textContent = syncListen ? "SYNC LISTEN" : "LISTENING";
+        const lb = document.querySelector(".listen-banner");
+        if (lb) lb.textContent = syncListen ? "SYNC LISTEN" : "LISTENING";
       }
       if (test) {
         $("matchBox").textContent = "LISTENING…";
@@ -1415,19 +1687,21 @@
         }
       }
 
-      // Prefer trained when active mark is ready.
+      // Prefer trained when active mark is ready. Follower Listen-to-sync = trained/freq only.
       const amListen = activeMark();
       const apListen = activePrints();
       const freqReady = amListen && amListen.kind === "frequency" && amListen.hz > 0;
       const soundReady = apListen.length >= 3;
-      if ((freqReady || apListen.length >= 5) && state.mode !== "trained") {
+      if ((freqReady || apListen.length >= 5 || syncListen) && state.mode !== "trained") {
         state.mode = "trained";
         $("setMode").value = "trained";
         persist();
       }
-      const useTrained = (state.mode === "trained" && (freqReady || soundReady)) || test;
+      const useTrained = (state.mode === "trained" && (freqReady || soundReady)) || test || syncListen;
       const target = meanPrint();
       const useFreq = useTrained && freqReady && (!test || amListen.kind === "frequency");
+      // Stash for mark() so heard path can say SYNC HEARD
+      window.__slateSyncListen = syncListen;
 
       // Test listen: frequency band OR ~3.5s peak-window cosine for sound marks.
       if (test) {
@@ -1476,7 +1750,14 @@
       listenTimer = setTimeout(() => { stopListen(); }, 12000);
 
       if (useFreq) {
-        startFreqListen({ test: false, mark: amListen });
+        startFreqListen({ test: false, mark: amListen, syncListen });
+        return;
+      }
+
+      if (syncListen && !(useTrained && (freqReady || target))) {
+        $("status").textContent = "NO SYNC MARK";
+        showToast("No trained sync mark ready.");
+        stopListen();
         return;
       }
 
@@ -1691,8 +1972,9 @@
         if (!test && !fired && ambientN >= 10 && e >= floor && now > ignoreUntil) {
           fired = true;
           ignoreUntil = now + 900;
+          const wasSync = !!(opts && opts.syncListen) || !!window.__slateSyncListen;
           stopListen();
-          mark({ heard: true, score });
+          mark({ heard: true, score, sync: wasSync });
           return;
         }
         if (now - t0 >= ARM_MS) {
@@ -1765,10 +2047,14 @@
       if (!isPro()) sessionGrace = true;
       clapping = true;
       unlockAudio();
+      const syncHeard = !!(opts && opts.heard) && (!!(opts && opts.sync) || !!window.__slateSyncListen || isFollower());
+      window.__slateSyncListen = false;
       if (mos) $("status").textContent = "MOS";
       else if (opts && opts.heard) {
         const sc = Number(opts.score);
-        $("status").textContent = Number.isFinite(sc) ? ("HEARD " + sc.toFixed(2)) : "HEARD";
+        if (syncHeard) $("status").textContent = Number.isFinite(sc) ? ("SYNC HEARD " + sc.toFixed(2)) : "SYNC HEARD";
+        else $("status").textContent = Number.isFinite(sc) ? ("HEARD " + sc.toFixed(2)) : "HEARD";
+        if (syncHeard) showToast("SYNC HEARD — board would update from master when connected.");
       } else $("status").textContent = "MARK";
       $("sticks").classList.add("closed");
       if (!mos) {
@@ -1992,6 +2278,22 @@
       persist();
     });
     $("setMode").addEventListener("change", () => { state.mode = $("setMode").value; persist(); });
+    if ($("setRole")) $("setRole").addEventListener("change", () => setRole($("setRole").value));
+    if ($("btnRoleMaster")) $("btnRoleMaster").addEventListener("click", () => setRole("master"));
+    if ($("btnRoleFollower")) $("btnRoleFollower").addEventListener("click", () => setRole("follower"));
+    if ($("btnListenSync")) $("btnListenSync").addEventListener("click", () => startListen({ syncListen: true }));
+    if ($("btnTestSlate")) $("btnTestSlate").addEventListener("click", () => startSlateTest());
+    if ($("btnTrainSlate")) $("btnTrainSlate").addEventListener("click", () => show("train"));
+    if ($("btnMarkFollow")) $("btnMarkFollow").addEventListener("click", () => mark());
+    if ($("btnFollowLearnSound")) $("btnFollowLearnSound").addEventListener("click", startLearnNewSound);
+    if ($("btnFollowUseHz")) $("btnFollowUseHz").addEventListener("click", useMasterFrequency);
+    if ($("btnFollowListenTone")) $("btnFollowListenTone").addEventListener("click", () => { listenLockMasterTone(); });
+    if ($("btnRecFollow")) $("btnRecFollow").addEventListener("click", () => openTrainReady());
+    if ($("followHzInput")) $("followHzInput").addEventListener("input", () => {
+      state.followHz = $("followHzInput").value;
+      persist();
+    });
+    // Follower MOS/Tail not on strip; master still wired below.
 
     document.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => show(b.dataset.go)));
     document.querySelectorAll("[data-k]").forEach((el) => {

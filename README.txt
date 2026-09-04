@@ -24,6 +24,23 @@ LISTEN
   cosine). Frequency marks watch a narrow FFT band above ambient.
   Enroll success shows a big GOT IT confirm.
 
+MASTER / FOLLOWER (slate-v16)
+  state.role = master | follower (default master — single-device testing unchanged).
+  Home or More → This device is Master / Follower.
+  Master: full Train, Learn frequency (scan→recommend→Test→Use/Change), Learn sound,
+  full slate edit, mark library delete tools.
+  Follower: Train = Learn sync mark (enroll sound OR Use master’s frequency / Listen·lock
+  tone — no open-band Learn frequency). Slate: Listen to sync (trained/freq only → sticks
+  + SYNC HEARD + toast that board would update from master when connected), Test the mark
+  (MATCH/HEARD confirm), Mark escape. Shared board fields read-only; Camera stays local.
+  Sync server not required for this PWA mock. Fingerprints only. Not LTC.
+
+MARK NAMES (slate-v16)
+  Default save name = today’s date (MM.DD.YYYY via todayStr) + abbreviated frequency
+  or Mark/Sound — not the words “Today’s Date…”. Examples: 09.04.2026 · 15.3kHz,
+  09.04.2026 · 15kHz, 09.04.2026 · Mark (· Sound / · Mark 2 on collision).
+  Prefills trainNameInput; maxlength 48.
+
 MARK LIBRARY (slate-v15)
   Each mark is its own library entry (fingerprints only — never raw WAV).
   state.marks[{ id, name, kind, prints|hz, created }] + activeMarkId.
