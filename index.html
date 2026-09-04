@@ -339,26 +339,25 @@
     </div>
     <div id="freqScan">
       <h2>Learn frequency</h2>
-      <p id="freqScanHint" class="fine" style="color:#aaa;max-width:360px">Scan a quiet high band (~12–20 kHz). Near-ultrasound may fail on some iPads / speakers. Prefer out-of-hearing; audible test tones OK.</p>
+      <p id="freqScanHint" class="fine" style="color:#aaa;max-width:360px">Scan ambient for a quiet high band (~12–20 kHz), then <b>Test the mark</b> — this speaker plays that Hz. Use saves it; Change picks another. Near-ultrasound may fail on some iPads / speakers.</p>
       <div id="freqHzBig">—</div>
       <p id="freqScanStatus" class="fine" style="color:#aaa">Tap Scan ambient</p>
-      <label class="fine" style="color:#888;margin-top:12px;display:block">Manual Hz (test)</label>
+      <label class="fine" style="color:#888;margin-top:12px;display:block">or pick Hz</label>
       <input id="freqHzManual" type="range" min="1000" max="20000" step="50" value="15000" />
       <p id="freqManualLabel" class="fine" style="color:#bbb">15000 Hz</p>
       <div class="ov-btns" style="margin-top:12px">
         <button type="button" class="ov-yes" id="btnFreqScan">Scan ambient</button>
-        <button type="button" class="ov-yes" id="btnFreqUseManual">Use slider</button>
+        <button type="button" class="ov-yes" id="btnFreqTest">Test the mark</button>
         <button type="button" class="ov-no" id="btnFreqCancel">Cancel</button>
       </div>
     </div>
     <div id="freqConfirm">
-      <h2>Confirm tone</h2>
+      <h2>Test the mark</h2>
       <div id="freqConfirmHz" class="freqHzBig" style="font-size:clamp(36px,10vw,64px);font-weight:900;color:#2ecc71">17500 Hz</div>
-      <p id="freqConfirmHint" class="fine" style="color:#aaa;max-width:360px">Playing a short confirmation tone from this speaker. If you cannot hear it, that is often fine for near-ultrasound — Listen still needs the mic to hear it on set.</p>
+      <p id="freqConfirmHint" class="fine" style="color:#aaa;max-width:360px">Playing this frequency from this speaker. If you cannot hear near-ultrasound, that can still be OK — Listen needs the set mic to hear the tone source. <b>Use this frequency</b> to name &amp; save, or <b>Change frequency</b> to pick another.</p>
       <div class="ov-btns">
-        <button type="button" class="ov-yes" id="btnFreqPlay">Play tone</button>
-        <button type="button" class="ov-yes" id="btnFreqSave">Yes · name &amp; save</button>
-        <button type="button" class="ov-no" id="btnFreqBack">Back</button>
+        <button type="button" class="ov-yes" id="btnFreqSave">Use this frequency</button>
+        <button type="button" class="ov-no" id="btnFreqBack">Change frequency</button>
       </div>
     </div>
   </div>
@@ -1632,12 +1631,12 @@
       freqCandidateHz = Math.max(1000, Math.min(20000, freqCandidateHz));
       const roomMean = avg.slice(i0, i1 + 1).reduce((a, b) => a + b, 0) / Math.max(1, i1 - i0 + 1);
       freqCandidateWeak = bestV > 18 || (roomMean > 12 && bestV > roomMean * 0.85);
-      $("freqHzBig").textContent = freqCandidateHz + " Hz";
+      $("freqHzBig").textContent = "Recommended: " + freqCandidateHz + " Hz";
       $("freqHzManual").value = String(freqCandidateHz);
       $("freqManualLabel").textContent = freqCandidateHz + " Hz";
-      let msg = `Candidate ${freqCandidateHz} Hz (quietest in ${Math.round(lo)}–${Math.round(hi)} Hz).`;
+      let msg = `Recommended: ${freqCandidateHz} Hz (quietest in ${Math.round(lo)}–${Math.round(hi)} Hz).`;
       if (freqCandidateWeak) msg += " Peak/ambient looks busy — near-ultrasound may fail on this device; try quieter room or audible test Hz.";
-      else msg += " Looks relatively quiet. Play tone to confirm, then save.";
+      else msg += " Looks relatively quiet. Tap Test the mark to hear it from this speaker.";
       if (nyquist < 22000) msg += " Device Nyquist " + Math.round(nyquist) + " Hz — high tones limited.";
       $("freqScanStatus").textContent = msg;
     }
@@ -1650,9 +1649,9 @@
       $("trainOverlay").classList.add("on");
       $("freqConfirmHz").textContent = Math.round(freqCandidateHz) + " Hz";
       $("freqConfirmHint").textContent = freqCandidateWeak
-        ? "Ambient was not very quiet at this bin. Near-ultrasound may fail on some iPads. Play the tone; if weak, pick a lower audible Hz for testing."
-        : "Playing a short confirmation tone from this speaker. If you cannot hear near-ultrasound, that can still be OK — Listen needs the set mic to hear the tone source.";
-      playToneHz(freqCandidateHz, 400).catch(() => {});
+        ? "Ambient was not very quiet at this bin. Near-ultrasound may fail on some iPads. Tone is playing from this speaker — if weak, Change frequency and pick a lower audible Hz."
+        : "Playing this frequency from this speaker. If you cannot hear near-ultrasound, that can still be OK — Listen needs the set mic to hear the tone source. Use this frequency to save, or Change frequency to pick another.";
+      playToneHz(freqCandidateHz, 450).catch(() => {});
     }
     function startFreqListen(opts) {
       const freqMark = opts && opts.mark;
@@ -1936,9 +1935,11 @@
       if (enrollMode === "new") openTrainReady();
     });
     $("btnFreqScan").addEventListener("click", () => { scanAmbientFrequency(); });
-    $("btnFreqUseManual").addEventListener("click", () => {
-      freqCandidateHz = Number($("freqHzManual").value) || 15000;
-      freqCandidateWeak = freqCandidateHz < 12000;
+    $("btnFreqTest").addEventListener("click", () => {
+      // Slider is source of truth after scan or manual pick
+      const hz = Number($("freqHzManual").value) || freqCandidateHz || 15000;
+      if (hz !== freqCandidateHz) freqCandidateWeak = hz < 12000;
+      freqCandidateHz = hz;
       openFreqConfirm();
     });
     $("btnFreqCancel").addEventListener("click", () => {
@@ -1946,10 +1947,11 @@
       cancelTrainOverlay(true);
     });
     $("freqHzManual").addEventListener("input", () => {
-      $("freqManualLabel").textContent = $("freqHzManual").value + " Hz";
-    });
-    $("btnFreqPlay").addEventListener("click", () => {
-      playToneHz(freqCandidateHz || Number($("freqHzManual").value) || 15000, 450).catch(() => {});
+      const hz = $("freqHzManual").value;
+      $("freqManualLabel").textContent = hz + " Hz";
+      freqCandidateHz = Number(hz) || 0;
+      $("freqHzBig").textContent = hz + " Hz";
+      $("freqScanStatus").textContent = "Picked " + hz + " Hz — tap Test the mark to hear it from this speaker.";
     });
     $("btnFreqSave").addEventListener("click", () => {
       enrollMode = "freq";
@@ -1958,6 +1960,13 @@
     $("btnFreqBack").addEventListener("click", () => {
       $("freqConfirm").classList.remove("on");
       $("freqScan").classList.add("on");
+      // Keep current candidate visible so user can re-scan, move slider, then Test again
+      if (freqCandidateHz) {
+        $("freqHzBig").textContent = Math.round(freqCandidateHz) + " Hz";
+        $("freqHzManual").value = String(Math.round(freqCandidateHz));
+        $("freqManualLabel").textContent = Math.round(freqCandidateHz) + " Hz";
+        $("freqScanStatus").textContent = "Current: " + Math.round(freqCandidateHz) + " Hz — re-scan, move slider, or Test the mark again.";
+      }
     });
     $("btnExport").addEventListener("click", () => {
       if (!isPro() && !sessionGrace) { show("home"); return; }

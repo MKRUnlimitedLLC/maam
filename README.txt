@@ -24,7 +24,7 @@ LISTEN
   cosine). Frequency marks watch a narrow FFT band above ambient.
   Enroll success shows a big GOT IT confirm.
 
-MARK LIBRARY (slate-v14)
+MARK LIBRARY (slate-v15)
   Each mark is its own library entry (fingerprints only — never raw WAV).
   state.marks[{ id, name, kind, prints|hz, created }] + activeMarkId.
   Migrate: old single prints[] → one “Mark 1” sound mark, set active.
@@ -36,13 +36,14 @@ MARK LIBRARY (slate-v14)
 
 FREQUENCY MARKS (MVP / Pro-path test)
   kind: "frequency" stores { hz, bandHz }. Train → Learn frequency:
-  Scan ambient ~1.5s, pick quietest bin in ~12–20 kHz (or 8–18 if the
-  device Nyquist is weak); confirm with a short speaker tone; name & save.
-  Manual Hz slider 1000–20000 when auto-scan fails. Listen: soft energy
-  above ambient in that band → sticks slam. Honest limit: near-ultrasound
-  may fail on some iPads / speakers; weak ambient scan warns you.
-  Test with a Samsung S22 tone generator (or same-device Play tone) aimed
-  at the slate mic while Listen is armed.
+  1) Scan ambient ~1.5s → Recommended: NNNNN Hz (quietest bin ~12–20 kHz,
+     or 8–18 if Nyquist is weak). 2) Test the mark — plays that Hz from
+     this speaker. 3) Use this frequency → name & save, or Change frequency
+     → back to scan/slider, re-test. Manual “or pick Hz” slider 1000–20000.
+  Listen: soft energy above ambient in that band → sticks slam. Honest
+  limit: near-ultrasound may fail on some iPads / speakers; weak ambient
+  scan warns you. Test with a Samsung S22 tone generator (or same-device
+  Test the mark) aimed at the slate mic while Listen is armed.
 
 TRAIN A CUSTOM SOUND MARK
   Train tab → Learn new sound or Record → “Ready…?” → Yes → countdown
