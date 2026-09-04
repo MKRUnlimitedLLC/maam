@@ -242,8 +242,25 @@
     }
     #trainCountNum.rec { color: #2ecc71; font-size: clamp(48px, 14vw, 96px); letter-spacing: 0.12em; }
     #trainCountHint { color: #aaa; font-size: 14px; letter-spacing: 0.08em; margin-top: 16px; max-width: 360px; }
-    #trainReady, #trainCount { display: none; flex-direction: column; align-items: center; }
-    #trainReady.on, #trainCount.on { display: flex; }
+    #trainReady, #trainCount, #trainGot { display: none; flex-direction: column; align-items: center; }
+    #trainReady.on, #trainCount.on, #trainGot.on { display: flex; }
+    #trainGotNum {
+      font-size: clamp(42px, 12vw, 88px); font-weight: 900;
+      line-height: 1.05; letter-spacing: 0.06em; color: #2ecc71;
+      text-transform: uppercase;
+    }
+    #trainGotHint { color: #cfc8b8; font-size: 15px; letter-spacing: 0.08em; margin-top: 14px; }
+    #trainOverlay.gotFlash {
+      background: rgba(243,239,230,.96); color: #111;
+      animation: gotCream 1.1s ease-out;
+    }
+    #trainOverlay.gotFlash #trainGotNum { color: #1a9f4a; }
+    #trainOverlay.gotFlash #trainGotHint { color: #333; }
+    @keyframes gotCream {
+      0% { background: rgba(243,239,230,.98); }
+      35% { background: rgba(243,239,230,.96); }
+      100% { background: rgba(17,17,17,.94); }
+    }
   </style>
 </head>
 <body>
@@ -269,6 +286,10 @@
     <div id="trainCount">
       <div id="trainCountNum">5</div>
       <p id="trainCountHint">Make Noise now at 0</p>
+    </div>
+    <div id="trainGot">
+      <div id="trainGotNum">GOT IT</div>
+      <p id="trainGotHint">Print saved</p>
     </div>
   </div>
 
@@ -459,6 +480,7 @@
     let trainCdLeft = 0;
     const TRAIN_MS = 1000;
     const TRAIN_RMS_FLOOR = 0.0015;
+    let trainGotTimer = null;
     let trainWarmRaf = null;
     let state = {
       fields: { prod: "UNTITLED", roll: "A001", scene: "1", take: "1", dir: "", cam: "", fps: "24", ie: "INT", dn: "DAY", date: "" },
@@ -639,6 +661,7 @@
     function finishMorningSetup() {
       state.needMorningSetup = false;
       state.mode = state.prints.length >= 3 ? "trained" : "generic";
+      $("setMode").value = state.mode;
       persist();
       paintPro();
       show("slate");
@@ -818,10 +841,13 @@
     function hideTrainOverlay() {
       clearTrainCdTimer();
       clearTrainWarm();
+      if (trainGotTimer) { clearTimeout(trainGotTimer); trainGotTimer = null; }
       const ov = $("trainOverlay");
       ov.classList.remove("on");
+      ov.classList.remove("gotFlash");
       $("trainReady").classList.remove("on");
       $("trainCount").classList.remove("on");
+      $("trainGot").classList.remove("on");
       $("trainCountNum").classList.remove("rec");
       $("trainCountNum").textContent = "5";
       $("trainCountHint").textContent = "Make Noise now at 0";
@@ -873,6 +899,25 @@
         beginEnrollCapture({ zeroAtMs: 500 });
       };
       trainCdTimer = setTimeout(next, 1000);
+    }
+
+    function showGotItConfirm(sampleN, done) {
+      $("trainReady").classList.remove("on");
+      $("trainCount").classList.remove("on");
+      $("trainGot").classList.add("on");
+      $("trainGotNum").textContent = "GOT IT · sample " + sampleN;
+      $("trainGotHint").textContent = "Print saved";
+      const ov = $("trainOverlay");
+      ov.classList.add("on");
+      ov.classList.remove("gotFlash");
+      void ov.offsetWidth;
+      ov.classList.add("gotFlash");
+      try { if (navigator.vibrate) navigator.vibrate(40); } catch (e) {}
+      if (trainGotTimer) clearTimeout(trainGotTimer);
+      trainGotTimer = setTimeout(() => {
+        trainGotTimer = null;
+        if (typeof done === "function") done();
+      }, 1100);
     }
 
     /** Capture TRAIN_MS on warm mic; fingerprint = peak-energy window. */
@@ -935,12 +980,16 @@
         }
         state.prints.push(built.print);
         if (state.prints.length > 8) state.prints = state.prints.slice(-8);
-        if (state.prints.length >= 5) state.mode = "trained";
+        if (state.prints.length >= 5) {
+          state.mode = "trained";
+          $("setMode").value = "trained";
+        }
         persist();
         renderDots();
         paintPro();
-        const ok = `Got sample ${state.prints.length}. ${state.prints.length >= 5 ? "Done. Test listen next." : "Same sound again."}`;
-        finishTrainUi(ok, null);
+        const n = state.prints.length;
+        const ok = `Got sample ${n} — print saved.${n >= 5 ? " Done. Test listen next." : " Same sound again."}`;
+        showGotItConfirm(n, () => finishTrainUi(ok, null));
       };
       listenRaf = requestAnimationFrame(tickTrain);
     }
@@ -1024,6 +1073,12 @@
         }
       }
 
+      // Prefer trained when prints exist; morning setup / 5 samples set mode trained.
+      if (state.prints.length >= 5 && state.mode !== "trained") {
+        state.mode = "trained";
+        $("setMode").value = "trained";
+        persist();
+      }
       const useTrained = (state.mode === "trained" && state.prints.length >= 3) || test;
       const target = meanPrint();
 
@@ -1067,37 +1122,41 @@
         return;
       }
 
-      // Board listen: 12s arming window. Trained uses soft RMS / peak print like enroll.
+      // Board listen: 12s arm. Trained = continuous rolling peak-window cosine (like Test).
+      // Generic keeps spike+bright below. Day unlock (isPro) already gated above.
       listenTimer = setTimeout(() => { stopListen(); }, 12000);
 
       if (useTrained && target) {
-        const ROLL = 18;
+        const ARM_MS = 12000;
+        const ROLL_MS = 1200;
+        const CHECK_MS = 100;
+        const PEAK_FLOOR = 0.0015;
         const frames = [];
-        let pendingUntil = 0;
+        const t0 = performance.now();
+        let lastCheck = 0;
         const tickTrained = () => {
           if (!listenOn) return;
           const now = performance.now();
           const fr = readMicFrame(time, freq);
+          fr.t = now;
           frames.push(fr);
-          if (frames.length > ROLL) frames.shift();
+          while (frames.length && now - frames[0].t > ROLL_MS) frames.shift();
           baseline = baseline * 0.96 + fr.rms * 0.04;
-          const softRise = fr.rms > Math.max(baseline * 1.6, 0.012);
-          const anyLoud = fr.rms > 0.02;
-          if (now > ignoreUntil && (softRise || anyLoud)) {
-            if (!pendingUntil) pendingUntil = now + 80;
+          if (now - t0 >= ARM_MS) {
+            stopListen();
+            return;
           }
-          if (pendingUntil && now >= pendingUntil) {
+          if (now - lastCheck >= CHECK_MS && frames.length >= 9 && now > ignoreUntil) {
+            lastCheck = now;
             const built = peakPrintFromFrames(frames);
-            pendingUntil = 0;
-            if (built && built.peakRms > 0.012) {
+            if (built && built.peakRms >= PEAK_FLOOR) {
               const score = cosine(built.print, target);
               if (score >= matchThresh()) {
                 stopListen();
-                mark({ heard: true });
+                mark({ heard: true, score });
                 return;
               }
             }
-            ignoreUntil = performance.now() + 250;
           }
           listenRaf = requestAnimationFrame(tickTrained);
         };
@@ -1189,7 +1248,11 @@
       if (!isPro()) sessionGrace = true;
       clapping = true;
       unlockAudio();
-      $("status").textContent = mos ? "MOS" : (opts && opts.heard ? "HEARD" : "MARK");
+      if (mos) $("status").textContent = "MOS";
+      else if (opts && opts.heard) {
+        const sc = Number(opts.score);
+        $("status").textContent = Number.isFinite(sc) ? ("HEARD " + sc.toFixed(2)) : "HEARD";
+      } else $("status").textContent = "MARK";
       $("sticks").classList.add("closed");
       if (!mos) {
         if (!(opts && opts.heard)) playClap();

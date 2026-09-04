@@ -19,6 +19,7 @@ LISTEN
   Tap Listen, hold the board up to camera, make the mark sound.
   Generic mode: any sharp clap / snap.
   Trained mode: only the sound you enrolled.
+  Board trained Listen now matches like Test — continuous ~1.2s rolling peak-window cosine for the arm window (no soft-rise gate). Enroll success shows a big GOT IT confirm.
 
 TRAIN A CUSTOM MARK
   Train tab → Record → “Ready to record your mark?” → Yes → countdown
