@@ -39,10 +39,21 @@
     }
     .badge { font-size: 10px; letter-spacing: 0.12em; padding: 4px 8px; border: 1px solid #333; border-radius: 999px; }
     .badge.pro { border-color: #2ecc71; color: #2ecc71; }
-    .home { padding: 12px 20px 24px; gap: 16px; }
-    .home h1 { font-size: 40px; letter-spacing: 0.22em; margin: 8px 0 0; }
-    .home .lede { color: #999; line-height: 1.45; max-width: 420px; }
-    .stack { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+    #view-home.screen {
+      flex: 1; min-height: 0;
+      overflow-y: auto; -webkit-overflow-scrolling: touch;
+    }
+    #view-home > .home {
+      flex: 1 0 auto; min-height: 0;
+      display: flex; flex-direction: column;
+      padding: 12px 20px calc(24px + env(safe-area-inset-bottom));
+      gap: 12px;
+    }
+    .home { padding: 12px 20px calc(24px + env(safe-area-inset-bottom)); gap: 12px; }
+    .home h1 { font-size: 36px; letter-spacing: 0.22em; margin: 4px 0 0; }
+    .home .lede { color: #999; line-height: 1.4; max-width: 420px; margin: 0; }
+    .home .fine-sm { font-size: 11px; color: #666; line-height: 1.35; margin: 0; max-width: 520px; }
+    .stack { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; flex-shrink: 0; } /* under role row — never margin-top:auto */
     button.big {
       appearance: none; border: 0; border-radius: 10px;
       padding: 16px 18px; font-size: 16px; font-weight: 700;
@@ -119,6 +130,11 @@
     .nav {
       display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px;
       padding: 6px 8px calc(8px + env(safe-area-inset-bottom));
+      background: #111;
+      border-top: 1px solid #222;
+      z-index: 20;
+      flex-shrink: 0;
+      position: relative;
     }
     .nav button { background: transparent; border: 0; color: #888; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; padding: 8px 0; }
     .nav button.here { color: #f3efe6; }
@@ -171,8 +187,11 @@
     }
     /* iPad / large: camera-readable dummy board. Chrome stays off the clapper face. */
     @media (min-width: 768px) {
-      .home { max-width: 560px; padding: 24px 28px 32px; }
-      .home h1 { font-size: 56px; }
+      .home { max-width: 560px; padding: 14px 28px calc(24px + env(safe-area-inset-bottom)); gap: 10px; }
+      #view-home > .home { padding: 14px 28px calc(24px + env(safe-area-inset-bottom)); gap: 10px; }
+      .home h1 { font-size: 44px; margin-top: 0; }
+      .home .lede { font-size: 15px; max-width: 480px; }
+      .home .fine-sm { font-size: 11px; }
       .sticks { height: 72px; flex: 0 0 72px; }
       .stick { height: 32px; }
       .stick.bot { top: 38px; }
@@ -299,7 +318,7 @@
       text-transform: uppercase; font-weight: 700;
     }
     .role-row {
-      display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 8px 0 4px;
+      display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 2px 0 0;
     }
     .role-row button {
       appearance: none; border: 1px solid #333; background: #222; color: #eee;
@@ -395,11 +414,10 @@
   <div id="app">
     <section class="screen home on" id="view-home">
       <div class="topbar"><span>Second Sticks</span><span class="badge" id="homeBadge">LOCKED</span></div>
-      <div class="home" style="display:flex;flex-direction:column;">
+      <div class="home">
         <h1>Second Sticks</h1>
         <p class="lede" id="homeLede">Second Sticks. Train a sound, hold the board up, make the mark. Dummy slate for iPhone and iPad. Ads never appear on the board the camera sees.</p>
-        <p class="fine">Dummy slate. The red numbers are wall-clock, not LTC. Fast enough to cut with. Not a Denecke. Working title — not a reserved App Store listing.</p>
-        <label style="display:block;font-size:12px;letter-spacing:0.1em;text-transform:uppercase;color:#888;margin-top:4px">This device</label>
+        <label style="display:block;font-size:12px;letter-spacing:0.1em;text-transform:uppercase;color:#888;margin:0">This device</label>
         <div class="role-row" id="homeRoleRow">
           <button type="button" id="btnRoleMaster" class="on">Master</button>
           <button type="button" id="btnRoleFollower">Follower</button>
@@ -413,8 +431,9 @@
           <button class="big ghost master-only" data-go="train" id="btnHomeTrain">Train your mark sound</button>
         </div>
         <p class="fine" id="homeStatus"></p>
-        <p class="fine">On iPad: Safari over https, Share → Add to Home Screen, then hold landscape. Microphone listen needs https. A file from Files usually cannot use the mic.</p>
-        <p class="fine">Mic is used only while Listen or Train is armed. Marks are fingerprints stored on this device; reusable across shots — not raw recordings. No account, no cloud.</p>
+        <p class="fine fine-sm">Prototype board — LTC jam is the product goal; this Pages build still uses a running clock until native LTC ships. Not a Denecke. Working title — not a reserved App Store listing.</p>
+        <p class="fine fine-sm">On iPad: Safari over https, Share → Add to Home Screen, then hold landscape. Microphone listen needs https. A file from Files usually cannot use the mic.</p>
+        <p class="fine fine-sm">Mic is used only while Listen or Train is armed. Marks are fingerprints stored on this device; reusable across shots — not raw recordings. No account, no cloud.</p>
       </div>
     </section>
 
@@ -697,10 +716,10 @@
         trainM.className = "big ghost master-only";
         trainM.dataset.go = "train";
       }
-      // Follower: Ads (if shown) → Train sync → Open slate → tip. Master: Open → Ads → tip → Train.
+      // Master: Ads (if locked/shown) → Open slate → Train → tip. Follower: Ads → Train sync → Open → tip.
       const seq = fol
         ? [ad, trainF, open, tip, trainM]
-        : [open, ad, tip, trainM, trainF];
+        : [ad, open, trainM, tip, trainF];
       seq.forEach((el) => { if (el) stack.appendChild(el); });
     }
     function applyRoleUi() {
