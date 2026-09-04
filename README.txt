@@ -1,3 +1,10 @@
+slate-v22 (2026-09-04):
+  Listen false-positive harden: frequency Listen needs sustained peak
+  (streak) + higher absolute/ratio floor; trained sound peak floor 0.012
+  and 2-check streak; generic clap tighter; default matchTol 0.90.
+  Master Choose frequency: clear stuck recBusy; auto-run Scan ambient
+  (environment analyzer → Recommended Hz → Test → Use).
+
 Second Sticks (working title; not final App Store)
 MAAM = internal/code/repo only
 (dummy film slate)
