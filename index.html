@@ -117,6 +117,8 @@
     }
     .expire-banner.on { display: block; }
     .controls { display: grid; grid-template-columns: 1fr 1.3fr 1fr 1fr; gap: 7px; }
+    .controls.master-ctrls { grid-template-columns: 1fr 1.25fr 1.3fr 0.9fr 0.9fr; }
+    .controls.master-ctrls.no-broadcast { grid-template-columns: 1fr 1.3fr 1fr 1fr; }
     .ctrl {
       background: #1c1c1c; color: #eee; border: 1px solid #333;
       padding: 11px 6px; font-size: 11px; font-weight: 700;
@@ -125,6 +127,8 @@
     .ctrl.mark { background: var(--red); border-color: #8b1428; font-size: 15px; }
     .ctrl.listen { background: #1c3d2e; border-color: #2ecc71; }
     .ctrl.listen.hot { background: #2ecc71; color: #111; animation: pulse 1s infinite; }
+    .ctrl.broadcast { background: #1a3350; border-color: #4aa3ff; color: #dcebff; }
+    .ctrl.broadcast.hot { background: #4aa3ff; color: #111; animation: pulse 1s infinite; }
     .ctrl.on { background: #f3efe6; color: #111; }
     @keyframes pulse { 50% { opacity: .7; } }
     .nav {
@@ -183,6 +187,7 @@
     .lock.on { display: flex; }
     @media (max-width: 520px) and (orientation: portrait) {
       .controls { grid-template-columns: 1fr 1fr; }
+      .controls.master-ctrls { grid-template-columns: 1fr 1fr; }
       .meta { grid-template-columns: 1fr 1fr; }
     }
     /* iPad / large: camera-readable dummy board. Chrome stays off the clapper face. */
@@ -300,6 +305,9 @@
       appearance: none; background: #222; border: 1px solid #333; color: #eee;
       border-radius: 6px; padding: 6px 10px; font-size: 10px; letter-spacing: 0.1em;
       text-transform: uppercase; font-weight: 700;
+    }
+    .mark-strip button.cta {
+      background: #243018; border-color: #2ecc71; color: #e8ffe8;
     }
     .mark-row {
       display: flex; align-items: center; justify-content: space-between; gap: 10px;
@@ -422,7 +430,7 @@
           <button type="button" id="btnRoleMaster" class="on">Master</button>
           <button type="button" id="btnRoleFollower">Follower</button>
         </div>
-        <p class="fine" id="homeRoleHint">Master owns Learn frequency, full slate edit, and mark library. Follower: Train sync mark, Listen to sync, Test the mark. Default Master for single-device.</p>
+        <p class="fine" id="homeRoleHint">Master: Open slate → Choose frequency or custom sound → Broadcast tone for followers. Train tab stays for library. Follower: Train sync, Listen to sync, Test. Default Master for single-device.</p>
         <div class="stack" id="homeStack">
           <button class="big ad" id="btnAd">Watch ads · unlock</button>
           <button class="big primary follower-only" data-go="train" id="btnHomeTrainFollow">Train · learn sync mark</button>
@@ -475,14 +483,15 @@
         <div class="expire-banner" id="expireBanner">Day expired after this shot — unlock again from Home</div>
         <div class="mark-strip" id="markStrip">
           <span>Mark: <b id="activeMarkLabel">none</b> · <span id="roleBadge">MASTER</span></span>
-          <span style="display:flex;gap:6px">
+          <span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
             <button type="button" id="btnChangeMark">Change</button>
-            <button type="button" class="master-only" id="btnLearnSoundSlate">Learn sound</button>
-            <button type="button" class="master-only" id="btnLearnFreqSlate">Learn freq</button>
+            <button type="button" class="master-only cta" id="btnLearnSoundSlate">Choose custom sound</button>
+            <button type="button" class="master-only cta" id="btnLearnFreqSlate">Choose frequency</button>
           </span>
         </div>
-        <div class="controls master-only" id="controlsMaster">
+        <div class="controls master-only master-ctrls no-broadcast" id="controlsMaster">
           <button class="ctrl listen" id="btnListen">Listen</button>
+          <button class="ctrl broadcast" id="btnBroadcast" style="display:none">Broadcast</button>
           <button class="ctrl mark" id="btnMark">Mark</button>
           <button class="ctrl" id="btnMos">MOS</button>
           <button class="ctrl" id="btnTail">Tail</button>
@@ -737,7 +746,7 @@
       if ($("homeRoleHint")) {
         $("homeRoleHint").textContent = fol
           ? "Follower board: Learn sync mark (Train), Listen to sync, Test the mark. Shared slate fields are read-only; Camera stays local."
-          : "Master owns Learn frequency, full slate edit, and mark library. Follower: Train sync mark, Listen to sync, Test the mark. Default Master for single-device.";
+          : "Master: Open slate → Choose frequency or custom sound → Broadcast tone for followers. Train tab stays for library. Follower: Train sync, Listen to sync, Test. Default Master for single-device.";
       }
       paintHomeStack();
       if ($("roleBadge")) $("roleBadge").textContent = fol ? "FOLLOWER" : "MASTER";
@@ -765,6 +774,7 @@
         $("btnListenSync").textContent = "Listen to sync";
         $("btnListenSync").classList.remove("hot");
       }
+      paintBroadcastUi();
     }
     function hoursLeft() {
       const ms = (state.proUntil || 0) - Date.now();
@@ -871,9 +881,20 @@
       const m = activeMark();
       const el = $("activeMarkLabel");
       if (!el) return;
-      if (!m) { el.textContent = "none"; return; }
-      if (m.kind === "frequency") el.textContent = m.name + " · " + Math.round(m.hz) + " Hz";
+      if (!m) { el.textContent = "none"; }
+      else if (m.kind === "frequency") el.textContent = m.name + " · " + Math.round(m.hz) + " Hz";
       else el.textContent = m.name + " · " + (m.prints ? m.prints.length : 0) + " smp";
+      paintBroadcastUi();
+    }
+    function paintBroadcastUi() {
+      const btn = $("btnBroadcast");
+      const ctrls = $("controlsMaster");
+      if (!btn || !ctrls) return;
+      const m = activeMark();
+      const showBc = isMaster() && m && m.kind === "frequency" && m.hz;
+      btn.style.display = showBc ? "" : "none";
+      ctrls.classList.toggle("no-broadcast", !showBc);
+      if (!showBc) btn.classList.remove("hot");
     }
     function renderMarkList() {
       const box = $("markList");
@@ -1344,6 +1365,10 @@
         persist();
         showGotItConfirm(1, () => {
           finishTrainUi(`Saved frequency mark “${name}” at ${Math.round(freqCandidateHz)} Hz.`, null);
+          if (isMaster()) {
+            showToast("Mark saved — back on Slate. Broadcast plays the tone for followers.");
+            show("slate");
+          }
         });
         return;
       }
@@ -1360,6 +1385,10 @@
       persist();
       showGotItConfirm(prints.length, () => {
         finishTrainUi(`Saved mark “${name}” with ${prints.length} samples. Active for Listen.`, null);
+        if (isMaster()) {
+          showToast("Mark saved — back on Slate. Use Listen / Mark (sound marks don’t Broadcast).");
+          show("slate");
+        }
       });
     }
     function cancelTrainOverlay(reenable) {
@@ -1927,6 +1956,26 @@
         osc.stop(t + (ms || 350) / 1000 + 0.02);
       });
     }
+    /** Master Broadcast / freq test — same speaker tone path. */
+    function playFreqTone(hz, ms) { return playToneHz(hz, ms); }
+    function broadcastActiveFreq() {
+      const m = activeMark();
+      if (!isMaster()) return;
+      if (!m || m.kind !== "frequency" || !m.hz) {
+        showToast("Choose frequency first, then Broadcast.");
+        return;
+      }
+      const btn = $("btnBroadcast");
+      if (btn) btn.classList.add("hot");
+      const ms = 1500;
+      playFreqTone(m.hz, ms).then(() => {
+        showToast("Broadcasting " + Math.round(m.hz) + " Hz · followers Listen · lock / Listen to sync");
+        setTimeout(() => { if (btn) btn.classList.remove("hot"); }, ms);
+      }).catch(() => {
+        if (btn) btn.classList.remove("hot");
+        showToast("Speaker blocked — tap again after unlocking audio.");
+      });
+    }
     async function scanAmbientFrequency() {
       $("freqScanStatus").textContent = "Scanning ambient… hold still (~1.5s)";
       $("freqHzBig").textContent = "…";
@@ -2252,6 +2301,7 @@
     $("btnLearnFreq").addEventListener("click", openFreqLearn);
     $("btnLearnSoundSlate").addEventListener("click", startLearnNewSound);
     $("btnLearnFreqSlate").addEventListener("click", openFreqLearn);
+    if ($("btnBroadcast")) $("btnBroadcast").addEventListener("click", () => broadcastActiveFreq());
     $("btnChangeMark").addEventListener("click", () => show("train"));
     $("btnRenameMark").addEventListener("click", () => {
       const m = activeMark();

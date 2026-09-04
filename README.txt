@@ -24,6 +24,13 @@ LISTEN
   cosine). Frequency marks watch a narrow FFT band above ambient.
   Enroll success shows a big GOT IT confirm.
 
+MASTER SLATE PATH (slate-v19)
+  Master happy path is slate-centric: Open slate → Choose frequency or
+  Choose custom sound (strip CTAs) → after Use/save return to Slate →
+  when the active mark is a frequency, Broadcast plays that Hz for
+  followers/cameras (playFreqTone). Train tab remains for library/power users.
+  Follower UI unchanged (Train sync, Listen to sync, Test).
+
 FOLLOWER HOME (slate-v17)
   When This device = Follower: Home stack is Watch ads · unlock (if locked),
   Train · learn sync mark (primary), Open slate, then tip. Lede shortens to
