@@ -27,7 +27,7 @@ TRAIN A CUSTOM MARK
   “Make Noise now” for the rest of a 1s window. The sample fingerprint
   is the prominent/peak-energy structure in that second, not a flat
   average of silence. Fail floor is low; errors show measured peak RMS.
-  Repeat 5 times. Test listen. Match threshold (More) sets how strict
+  Repeat 5 times. Test listen (~3.5s peak window, always shows MATCH/NO MATCH 0.xx). Match threshold (More) sets how strict
   cosine match is (lower = looser). Fingerprints only — no raw audio.
 
 MARK

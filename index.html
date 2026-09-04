@@ -755,7 +755,7 @@
       };
       trainWarmRaf = requestAnimationFrame(tick);
     }
-    function peakWindowPrint(frames) {
+    function peakPrintFromFrames(frames) {
       if (!frames.length) return null;
       let peakIdx = 0;
       let peakRms = frames[0].rms;
@@ -774,6 +774,27 @@
       selected.forEach((f) => { for (let i = 0; i < BANDS; i++) acc[i] += f.fp[i]; });
       const inv = 1 / selected.length;
       return { print: acc.map((v) => v * inv), peakRms };
+    }
+    function peakWindowPrint(frames) { return peakPrintFromFrames(frames); }
+    function paintTestScore(score) {
+      const n = Number(score);
+      const s = Number.isFinite(n) ? n : 0;
+      const ok = s >= matchThresh();
+      const txt = (ok ? "MATCH" : "NO MATCH") + "  " + s.toFixed(2);
+      $("matchBox").textContent = txt;
+      $("matchBox").className = "matchbox " + (ok ? "yes" : "no");
+      if ($("view-setup").classList.contains("on")) {
+        $("setupMatch").textContent = txt;
+        $("setupMatch").className = "matchbox " + (ok ? "yes" : "no");
+      }
+    }
+    function readMicFrame(time, freq) {
+      analyser.getFloatTimeDomainData(time);
+      analyser.getByteFrequencyData(freq);
+      let rms = 0;
+      for (let i = 0; i < time.length; i++) rms += time[i] * time[i];
+      rms = Math.sqrt(rms / time.length);
+      return { rms, fp: fingerprintFrom(freq) };
     }
     function finishTrainUi(okMsg, failMsg) {
       hideTrainOverlay();
@@ -906,7 +927,7 @@
           return;
         }
         stopListen();
-        const built = peakWindowPrint(frames);
+        const built = peakPrintFromFrames(frames);
         const peakRms = built ? built.peakRms : 0;
         if (!built || peakRms < TRAIN_RMS_FLOOR || frames.length < 1) {
           finishTrainUi(null, `No sound heard (peak ${peakRms.toFixed(4)}). Closer / louder.`);
@@ -967,6 +988,7 @@
         await enrollSample();
         return;
       }
+      if (listenOn) stopListen();
       try {
         const mic = await openMic();
         micStream = mic.stream;
@@ -996,67 +1018,113 @@
       if (test) {
         $("matchBox").textContent = "LISTENING…";
         $("matchBox").className = "matchbox";
-      }
-
-      listenTimer = setTimeout(() => {
-        if (test) {
-          $("matchBox").textContent = "NO MATCH"; $("matchBox").className = "matchbox no";
-          if ($("view-setup").classList.contains("on")) {
-            $("setupMatch").textContent = "NO MATCH"; $("setupMatch").className = "matchbox no";
-          }
+        if ($("view-setup").classList.contains("on")) {
+          $("setupMatch").textContent = "LISTENING…";
+          $("setupMatch").className = "matchbox";
         }
-        stopListen();
-      }, test ? 8000 : 12000);
+      }
 
       const useTrained = (state.mode === "trained" && state.prints.length >= 3) || test;
       const target = meanPrint();
-      let capturing = false;
 
-      const tickMic = async () => {
+      // Test listen: no spike/bright. ~3.5s continuous {rms,fp} then peak-window cosine.
+      // No timeout that can wipe the score to bare "NO MATCH".
+      if (test) {
+        const TEST_MS = 3500;
+        const frames = [];
+        const t0 = performance.now();
+        const finishTest = () => {
+          let score = 0;
+          if (target && frames.length) {
+            const built = peakPrintFromFrames(frames);
+            if (built) score = cosine(built.print, target);
+          }
+          paintTestScore(score);
+          stopListen();
+        };
+        const tickTest = () => {
+          if (!listenOn) return;
+          frames.push(readMicFrame(time, freq));
+          const elapsed = performance.now() - t0;
+          if (elapsed >= 500 && target && frames.length >= 9) {
+            const built = peakPrintFromFrames(frames);
+            if (built && built.peakRms > 0.02) {
+              const score = cosine(built.print, target);
+              if (score >= matchThresh()) {
+                paintTestScore(score);
+                stopListen();
+                return;
+              }
+            }
+          }
+          if (elapsed >= TEST_MS) {
+            finishTest();
+            return;
+          }
+          listenRaf = requestAnimationFrame(tickTest);
+        };
+        listenRaf = requestAnimationFrame(tickTest);
+        return;
+      }
+
+      // Board listen: 12s arming window. Trained uses soft RMS / peak print like enroll.
+      listenTimer = setTimeout(() => { stopListen(); }, 12000);
+
+      if (useTrained && target) {
+        const ROLL = 18;
+        const frames = [];
+        let pendingUntil = 0;
+        const tickTrained = () => {
+          if (!listenOn) return;
+          const now = performance.now();
+          const fr = readMicFrame(time, freq);
+          frames.push(fr);
+          if (frames.length > ROLL) frames.shift();
+          baseline = baseline * 0.96 + fr.rms * 0.04;
+          const softRise = fr.rms > Math.max(baseline * 1.6, 0.012);
+          const anyLoud = fr.rms > 0.02;
+          if (now > ignoreUntil && (softRise || anyLoud)) {
+            if (!pendingUntil) pendingUntil = now + 80;
+          }
+          if (pendingUntil && now >= pendingUntil) {
+            const built = peakPrintFromFrames(frames);
+            pendingUntil = 0;
+            if (built && built.peakRms > 0.012) {
+              const score = cosine(built.print, target);
+              if (score >= matchThresh()) {
+                stopListen();
+                mark({ heard: true });
+                return;
+              }
+            }
+            ignoreUntil = performance.now() + 250;
+          }
+          listenRaf = requestAnimationFrame(tickTrained);
+        };
+        listenRaf = requestAnimationFrame(tickTrained);
+        return;
+      }
+
+      let capturing = false;
+      const tickMic = () => {
         if (!listenOn) return;
-        analyser.getFloatTimeDomainData(time);
-        analyser.getByteFrequencyData(freq);
-        let rms = 0;
-        for (let i = 0; i < time.length; i++) rms += time[i] * time[i];
-        rms = Math.sqrt(rms / time.length);
+        const fr = readMicFrame(time, freq);
+        const rms = fr.rms;
         baseline = baseline * 0.96 + rms * 0.04;
+        analyser.getByteFrequencyData(freq);
         let hi = 0;
         const start = Math.floor(freq.length * 0.25);
         for (let i = start; i < freq.length; i++) hi += freq[i];
         hi /= (freq.length - start);
         const now = performance.now();
-
         const spike = rms > Math.max(baseline * (3.2 + (10 - (state.sens || 6)) * 0.15), sensThresh());
         const bright = hi > 16 + (10 - (state.sens || 6)) * 2;
         if (spike && bright && now > ignoreUntil && rms > baseline * 2.4 && !capturing) {
           ignoreUntil = now + 900;
           capturing = true;
-          if (useTrained && target) {
-            const fp = await collectPrint(analyser, 18);
-            const score = cosine(fp, target);
-            if (test) {
-              const ok = score >= matchThresh();
-              $("matchBox").textContent = ok ? `MATCH  ${score.toFixed(2)}` : `NO MATCH  ${score.toFixed(2)}`;
-              $("matchBox").className = "matchbox " + (ok ? "yes" : "no");
-              if ($("view-setup").classList.contains("on")) {
-                $("setupMatch").textContent = ok ? `MATCH  ${score.toFixed(2)}` : `NO MATCH  ${score.toFixed(2)}`;
-                $("setupMatch").className = "matchbox " + (ok ? "yes" : "no");
-              }
-              stopListen();
-              return;
-            }
-            if (score >= matchThresh()) {
-              stopListen();
-              mark({ heard: true });
-              return;
-            }
-            capturing = false;
-            ignoreUntil = performance.now() + 250;
-          } else {
-            stopListen();
-            mark({ heard: true });
-            return;
-          }
+          stopListen();
+          mark({ heard: true });
+          return;
         }
         listenRaf = requestAnimationFrame(tickMic);
       };
