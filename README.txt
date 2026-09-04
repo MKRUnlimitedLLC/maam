@@ -1,5 +1,6 @@
-MAAM — Make Anything A Mark
-(working name; dummy film slate)
+Second Sticks (working title; not final App Store)
+MAAM = internal/code/repo only
+(dummy film slate)
 =================================
 
 Open index.html in Safari. Best: host the folder on GitHub Pages or

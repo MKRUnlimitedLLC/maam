@@ -1,7 +1,7 @@
 {
-  "name": "MAAM",
-  "short_name": "MAAM",
-  "description": "Make Anything A Mark. A dummy film slate. Train a sound, hold it up, make the mark.",
+  "name": "Second Sticks",
+  "short_name": "2nd Sticks",
+  "description": "Second Sticks — dummy film slate. Train a mark sound, hold up, make the mark.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
