@@ -721,11 +721,13 @@
           }
         }
         stopListen();
-      }, train || test ? 8000 : 12000);
+      }, train ? 15000 : (test ? 8000 : 12000));
 
-      const useTrained = (state.mode === "trained" && state.prints.length >= 3) || test || train;
+      // Train must NOT require a target print (sample 1 has prints.length===0).
+      const useTrained = (state.mode === "trained" && state.prints.length >= 3) || test;
       const target = meanPrint();
       let capturing = false;
+      const warmUntil = performance.now() + (train ? 350 : 0);
 
       const tickMic = async () => {
         if (!listenOn) return;
@@ -739,55 +741,64 @@
         const start = Math.floor(freq.length * 0.25);
         for (let i = start; i < freq.length; i++) hi += freq[i];
         hi /= (freq.length - start);
-        const spike = rms > Math.max(baseline * (3.2 + (10 - (state.sens || 6)) * 0.15), sensThresh());
-        const bright = hi > 16 + (10 - (state.sens || 6)) * 2;
         const now = performance.now();
-        if (spike && bright && now > ignoreUntil && rms > baseline * 2.4 && !capturing) {
-          ignoreUntil = now + 900;
-          capturing = true;
-          if (useTrained && target) {
+
+        if (train) {
+          // Softened train hit: no bright gate; lower RMS floor; 350ms warm-up.
+          const spike = rms > Math.max(baseline * 2.2, sensThresh() * 0.7);
+          if (spike && now > warmUntil && now > ignoreUntil && rms > baseline * 1.8 && !capturing) {
+            ignoreUntil = now + 900;
+            capturing = true;
             const fp = await collectPrint(analyser, 18);
-            const score = cosine(fp, target);
-            if (train) {
-              state.prints.push(fp);
-              if (state.prints.length > 8) state.prints = state.prints.slice(-8);
-              if (state.prints.length >= 5) state.mode = "trained";
-              persist();
-              renderDots();
-              paintPro();
-              $("trainStatus").textContent = `Got sample ${state.prints.length}. ${state.prints.length >= 5 ? "Done. Test listen next." : "Same sound again."}`;
-              recBusy = false;
-              $("btnRec").disabled = false;
-              $("btnRec").textContent = state.prints.length >= 5 ? "Record extra sample" : `Record sample ${state.prints.length + 1} of 5`;
-              if ($("view-setup").classList.contains("on")) {
-                $("setupTrainStatus").textContent = `Got sample ${state.prints.length}. Print updated.`;
-                paintSetup();
-              }
-              stopListen();
-              return;
+            state.prints.push(fp);
+            if (state.prints.length > 8) state.prints = state.prints.slice(-8);
+            if (state.prints.length >= 5) state.mode = "trained";
+            persist();
+            renderDots();
+            paintPro();
+            $("trainStatus").textContent = `Got sample ${state.prints.length}. ${state.prints.length >= 5 ? "Done. Test listen next." : "Same sound again."}`;
+            recBusy = false;
+            $("btnRec").disabled = false;
+            $("btnRec").textContent = state.prints.length >= 5 ? "Record extra sample" : `Record sample ${state.prints.length + 1} of 5`;
+            if ($("view-setup").classList.contains("on")) {
+              $("setupTrainStatus").textContent = `Got sample ${state.prints.length}. Print updated.`;
+              paintSetup();
             }
-            if (test) {
-              const ok = score >= 0.88;
-              $("matchBox").textContent = ok ? `MATCH  ${score.toFixed(2)}` : `NO MATCH  ${score.toFixed(2)}`;
-              $("matchBox").className = "matchbox " + (ok ? "yes" : "no");
-              if ($("view-setup").classList.contains("on")) {
-                $("setupMatch").textContent = ok ? `MATCH  ${score.toFixed(2)}` : `NO MATCH  ${score.toFixed(2)}`;
-                $("setupMatch").className = "matchbox " + (ok ? "yes" : "no");
+            stopListen();
+            return;
+          }
+        } else {
+          const spike = rms > Math.max(baseline * (3.2 + (10 - (state.sens || 6)) * 0.15), sensThresh());
+          const bright = hi > 16 + (10 - (state.sens || 6)) * 2;
+          if (spike && bright && now > ignoreUntil && rms > baseline * 2.4 && !capturing) {
+            ignoreUntil = now + 900;
+            capturing = true;
+            if (useTrained && target) {
+              const fp = await collectPrint(analyser, 18);
+              const score = cosine(fp, target);
+              if (test) {
+                const ok = score >= 0.88;
+                $("matchBox").textContent = ok ? `MATCH  ${score.toFixed(2)}` : `NO MATCH  ${score.toFixed(2)}`;
+                $("matchBox").className = "matchbox " + (ok ? "yes" : "no");
+                if ($("view-setup").classList.contains("on")) {
+                  $("setupMatch").textContent = ok ? `MATCH  ${score.toFixed(2)}` : `NO MATCH  ${score.toFixed(2)}`;
+                  $("setupMatch").className = "matchbox " + (ok ? "yes" : "no");
+                }
+                stopListen();
+                return;
               }
-              stopListen();
-              return;
-            }
-            if (score >= 0.88) {
+              if (score >= 0.88) {
+                stopListen();
+                mark({ heard: true });
+                return;
+              }
+              capturing = false;
+              ignoreUntil = performance.now() + 250;
+            } else {
               stopListen();
               mark({ heard: true });
               return;
             }
-            capturing = false;
-            ignoreUntil = performance.now() + 250;
-          } else {
-            stopListen();
-            mark({ heard: true });
-            return;
           }
         }
         listenRaf = requestAnimationFrame(tickMic);
