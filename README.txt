@@ -24,6 +24,24 @@ LISTEN
   cosine). Frequency marks watch a narrow FFT band above ambient.
   Enroll success shows a big GOT IT confirm.
 
+MOCK DEVICE ROOM (slate-v20)
+  Home or More → Room: Create room (5-char code) or Join room.
+  Master pushes shared board fields (not Camera) on field blur, after
+  Mark/take bump, and via Push now. Followers apply pushes; cam stays local.
+  Transport: BroadcastChannel name “second-sticks-room” + localStorage key
+  slate-room-CODE (storage event) — works same-browser tabs / same-origin
+  profiles that share storage. Two different phones on GitHub Pages alone
+  cannot sync (localStorage is per-device). Optional: More → LAN sync
+  WebSocket URL (ws://LAPTOP-IP:8787) after running sync-server on Wi-Fi.
+  Origin owns real multi-device sync later. Honest mock for weekend tabs.
+
+ROOM TEST STEPS
+  1) Tab A: Master → Create room → note code → edit Scene/Take → Push now.
+  2) Tab B (same origin): Follower → Join room with that code → fields apply.
+  3) Tab A: Mark (take increments) → Tab B should get new take.
+  4) Two phones: set LAN sync URL to a laptop running sync-server, or wait
+     for Origin. Pages + BroadcastChannel alone will not bridge devices.
+
 MASTER SLATE PATH (slate-v19)
   Master happy path is slate-centric: Open slate → Choose frequency or
   Choose custom sound (strip CTAs) → after Use/save return to Slate →
@@ -47,7 +65,7 @@ MASTER / FOLLOWER (slate-v16)
   tone — no open-band Learn frequency). Slate: Listen to sync (trained/freq only → sticks
   + SYNC HEARD + toast that board would update from master when connected), Test the mark
   (MATCH/HEARD confirm), Mark escape. Shared board fields read-only; Camera stays local.
-  Sync server not required for this PWA mock. Fingerprints only. Not LTC.
+  Room mock (slate-v20) uses BC+localStorage; optional LAN sync-server URL in More. Fingerprints only. Not LTC.
 
 MARK NAMES (slate-v16)
   Default save name = today’s date (MM.DD.YYYY via todayStr) + abbreviated frequency

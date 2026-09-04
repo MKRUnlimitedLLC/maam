@@ -354,6 +354,19 @@
     }
     #toast.on { display: block; animation: toastIn 180ms ease-out; }
     @keyframes toastIn { from { opacity: 0; transform: translateX(-50%) translateY(8px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+    .room-panel { margin: 10px 0 4px; padding: 10px 12px; border: 1px solid #2a2a2a; border-radius: 10px; background: #141414; }
+    .room-panel > label { display:block; font-size:12px; letter-spacing:0.1em; text-transform:uppercase; color:#888; margin:0 0 6px; }
+    .room-code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 22px; letter-spacing: 0.18em; color: #2ecc71; font-weight: 800;
+      margin: 4px 0 6px;
+    }
+    .room-panel .role-row { margin-top: 6px; }
+    .room-panel input[type="text"] {
+      width: 100%; box-sizing: border-box; margin: 6px 0;
+      background: #0d0d0d; border: 1px solid #333; color: #eee;
+      border-radius: 8px; padding: 10px 12px; font-size: 14px;
+    }
   </style>
 </head>
 <body class="role-master">
@@ -431,6 +444,17 @@
           <button type="button" id="btnRoleFollower">Follower</button>
         </div>
         <p class="fine" id="homeRoleHint">Master: Open slate → Choose frequency or custom sound → Broadcast tone for followers. Train tab stays for library. Follower: Train sync, Listen to sync, Test. Default Master for single-device.</p>
+        <div class="room-panel" id="homeRoomPanel">
+          <label>Room · mock field push</label>
+          <div class="room-code" id="homeRoomCode">—</div>
+          <div class="role-row" id="homeRoomRow">
+            <button type="button" id="btnRoomCreate">Create room</button>
+            <button type="button" id="btnRoomJoin">Join room</button>
+            <button type="button" id="btnRoomLeave" style="display:none">Leave</button>
+            <button type="button" id="btnRoomPush" class="master-only" style="display:none">Push now</button>
+          </div>
+          <p class="fine" id="homeRoomStatus">No room. Same-browser tabs / same-device profiles share via BroadcastChannel + localStorage. Two different phones need Origin sync or a LAN WebSocket URL in More.</p>
+        </div>
         <div class="stack" id="homeStack">
           <button class="big ad" id="btnAd">Watch ads · unlock</button>
           <button class="big primary follower-only" data-go="train" id="btnHomeTrainFollow">Train · learn sync mark</button>
@@ -606,6 +630,20 @@
           <option value="follower">Follower — Train sync, Listen to sync, Test</option>
         </select>
         <p class="fine">Single-device default is Master. Flip to Follower to mock a second board. Sync server not required for this UI mock.</p>
+        <label>Room (slate-v20 mock)</label>
+        <div class="room-panel" style="margin:0 0 12px;padding:10px 0;border:none;background:transparent">
+          <div class="room-code" id="setRoomCode">—</div>
+          <div class="role-row">
+            <button type="button" id="btnSetRoomCreate">Create room</button>
+            <button type="button" id="btnSetRoomJoin">Join room</button>
+            <button type="button" id="btnSetRoomLeave" style="display:none">Leave</button>
+            <button type="button" id="btnSetRoomPush" class="master-only" style="display:none">Push now</button>
+          </div>
+          <p class="fine" id="setRoomStatus">Same-origin tabs: BroadcastChannel (<code>second-sticks-room</code>) + localStorage key <code>slate-room-CODE</code>. Cross-phone needs Origin or LAN sync-server.</p>
+        </div>
+        <label>LAN sync WebSocket URL (optional)</label>
+        <input id="setSyncUrl" placeholder="ws://192.168.1.10:8787" />
+        <p class="fine">Optional. Run <code>sync-server</code> on the same Wi-Fi, then paste <code>ws://LAPTOP-IP:8787</code>. Empty = local mock only (tabs / same device). GitHub Pages cannot host WebSockets.</p>
         <label>Project name</label>
         <input id="setProject" placeholder="My film" />
         <label>Listen mode</label>
@@ -683,7 +721,10 @@
       activeMarkId: null,
       needMorningSetup: false,
       role: "master",
-      followHz: ""
+      followHz: "",
+      roomCode: "",
+      deviceId: "",
+      syncUrl: ""
     };
     let toastTimer = null;
 
@@ -750,6 +791,7 @@
       }
       paintHomeStack();
       if ($("roleBadge")) $("roleBadge").textContent = fol ? "FOLLOWER" : "MASTER";
+      paintRoomUi();
       if ($("trainTopTitle")) $("trainTopTitle").textContent = fol ? "Learn sync mark" : "Train mark sound";
       if ($("followHzInput") && state.followHz != null) $("followHzInput").value = state.followHz === "" || state.followHz == null ? "" : String(state.followHz);
       // Board fields: follower read-only except Camera
@@ -791,6 +833,9 @@
     function migrateMarks() {
       if (state.role !== "follower") state.role = "master";
       if (state.followHz == null) state.followHz = "";
+      if (!state.roomCode) state.roomCode = "";
+      if (!state.deviceId) state.deviceId = "";
+      if (state.syncUrl == null) state.syncUrl = "";
       if (!Array.isArray(state.marks)) state.marks = [];
       if (state.prints && state.prints.length && !state.marks.length) {
         const id = uid();
@@ -965,16 +1010,21 @@
       const trainedOk = (am && am.kind === "frequency") || (ap && ap.length >= 3);
       $("setMode").value = trainedOk ? (state.mode || "trained") : "generic";
       if ($("setRole")) $("setRole").value = state.role === "follower" ? "follower" : "master";
+      if ($("setSyncUrl")) $("setSyncUrl").value = state.syncUrl || "";
       applyRoleUi();
       paintPro();
       renderLog();
       renderDots();
       renderMarkList();
       paintActiveMarkLabel();
+      ensureDeviceId();
+      if (state.roomCode) bindRoomTransport();
+      else paintRoomUi();
     }
-    function saveFields() {
+    function saveFields(opts) {
       document.querySelectorAll("[data-k]").forEach((el) => { state.fields[el.dataset.k] = el.textContent.trim(); });
       persist();
+      if (!(opts && opts.skipPush) && isMaster() && state.roomCode) pushRoomState();
     }
 
     function paintPro() {
@@ -1054,6 +1104,235 @@
       if (name === "setup") paintSetup();
       if (name === "slate") paintActiveMarkLabel();
     }
+
+
+    /* ---- Mock device room (slate-v20): BroadcastChannel + localStorage; optional LAN WS ---- */
+    const ROOM_BC_NAME = "second-sticks-room";
+    let roomBc = null;
+    let roomWs = null;
+    let roomWsTimer = null;
+    let lastRoomPushAt = 0;
+
+    function ensureDeviceId() {
+      if (!state.deviceId) {
+        state.deviceId = "d" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+        persist();
+      }
+      return state.deviceId;
+    }
+    function makeRoomCode() {
+      const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+      let s = "";
+      for (let i = 0; i < 5; i++) s += alphabet[Math.floor(Math.random() * alphabet.length)];
+      return s;
+    }
+    function normRoomCode(r) {
+      return String(r || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
+    }
+    function roomStorageKey(code) {
+      return "slate-room-" + normRoomCode(code);
+    }
+    function roomTransportLabel() {
+      const parts = [];
+      parts.push("BC+localStorage");
+      if ((state.syncUrl || "").trim()) {
+        if (roomWs && roomWs.readyState === 1) parts.push("WS connected");
+        else if (roomWs && roomWs.readyState === 0) parts.push("WS connecting…");
+        else parts.push("WS offline");
+      }
+      return parts.join(" · ");
+    }
+    function paintRoomUi() {
+      const code = normRoomCode(state.roomCode);
+      const inRoom = !!code;
+      ["homeRoomCode", "setRoomCode"].forEach((id) => {
+        const el = $(id);
+        if (el) el.textContent = inRoom ? code : "—";
+      });
+      const status = inRoom
+        ? ("Room " + code + " · " + (isMaster() ? "master pushes fields" : "follower applies shared fields, cam local") + " · " + roomTransportLabel()
+          + (lastRoomPushAt ? (" · last " + new Date(lastRoomPushAt).toLocaleTimeString()) : "")
+          + ". Two phones on Pages alone cannot see each other’s localStorage — use Origin later or set a LAN sync URL.")
+        : "No room. Same-browser tabs sync via BroadcastChannel + localStorage. Two different phones need Origin sync or a LAN WebSocket URL in More.";
+      if ($("homeRoomStatus")) $("homeRoomStatus").textContent = status;
+      if ($("setRoomStatus")) $("setRoomStatus").textContent = status;
+      const leaveIds = ["btnRoomLeave", "btnSetRoomLeave"];
+      const pushIds = ["btnRoomPush", "btnSetRoomPush"];
+      leaveIds.forEach((id) => { const b = $(id); if (b) b.style.display = inRoom ? "" : "none"; });
+      pushIds.forEach((id) => {
+        const b = $(id);
+        if (!b) return;
+        b.style.display = inRoom && isMaster() ? "" : "none";
+      });
+    }
+    function sharedFieldsSnapshot() {
+      const f = {};
+      document.querySelectorAll("[data-k]").forEach((el) => {
+        if (el.dataset.k === "cam") return;
+        f[el.dataset.k] = el.textContent.trim();
+      });
+      Object.keys(state.fields || {}).forEach((k) => {
+        if (k === "cam") return;
+        if (f[k] == null) f[k] = state.fields[k];
+      });
+      const am = activeMark();
+      const markMeta = am ? {
+        id: am.id,
+        name: am.name,
+        kind: am.kind,
+        hz: am.kind === "frequency" ? am.hz : undefined,
+        bandHz: am.kind === "frequency" ? (am.bandHz || 80) : undefined
+      } : null;
+      return {
+        type: "state",
+        room: normRoomCode(state.roomCode),
+        from: ensureDeviceId(),
+        role: state.role === "follower" ? "satellite" : "master",
+        t: Date.now(),
+        fields: f,
+        activeMark: markMeta
+      };
+    }
+    function pushRoomState() {
+      if (!state.roomCode || !isMaster()) return;
+      const msg = sharedFieldsSnapshot();
+      lastRoomPushAt = msg.t;
+      try {
+        ensureRoomBc();
+        if (roomBc) roomBc.postMessage(msg);
+      } catch (e) {}
+      try {
+        localStorage.setItem(roomStorageKey(state.roomCode), JSON.stringify(msg));
+      } catch (e) {}
+      if (roomWs && roomWs.readyState === 1) {
+        try { roomWs.send(JSON.stringify(msg)); } catch (e) {}
+      }
+      paintRoomUi();
+    }
+    function applyRoomState(msg, opts) {
+      if (!msg || msg.type !== "state") return;
+      const code = normRoomCode(state.roomCode);
+      if (!code || normRoomCode(msg.room) !== code) return;
+      if (msg.from && msg.from === ensureDeviceId()) return;
+      if (isMaster() && !(opts && opts.force)) return;
+      const camKeep = field("cam") ? field("cam").textContent.trim() : (state.fields && state.fields.cam) || "";
+      if (msg.fields && typeof msg.fields === "object") {
+        Object.keys(msg.fields).forEach((k) => {
+          if (k === "cam") return;
+          const v = msg.fields[k];
+          if (state.fields) state.fields[k] = v;
+          const el = field(k);
+          if (el) el.textContent = v == null ? "" : String(v);
+        });
+      }
+      if (state.fields) state.fields.cam = camKeep;
+      if (field("cam")) field("cam").textContent = camKeep;
+      if (msg.fields && msg.fields.scene != null) lastSceneValue = String(msg.fields.scene);
+      persist();
+      if (!(opts && opts.silent)) showToast("Room fields applied · camera kept local");
+      paintRoomUi();
+    }
+    function pullLastRoomPush() {
+      if (!state.roomCode || !isFollower()) return;
+      try {
+        const raw = localStorage.getItem(roomStorageKey(state.roomCode));
+        if (raw) applyRoomState(JSON.parse(raw), { silent: true });
+      } catch (e) {}
+    }
+    function ensureRoomBc() {
+      if (roomBc || typeof BroadcastChannel === "undefined") return roomBc;
+      try {
+        roomBc = new BroadcastChannel(ROOM_BC_NAME);
+        roomBc.onmessage = (ev) => {
+          try { applyRoomState(ev.data); } catch (e) {}
+        };
+      } catch (e) { roomBc = null; }
+      return roomBc;
+    }
+    function connectRoomWs() {
+      const url = (state.syncUrl || "").trim();
+      if (roomWs) {
+        try { roomWs.onclose = null; roomWs.close(); } catch (e) {}
+        roomWs = null;
+      }
+      if (roomWsTimer) { clearTimeout(roomWsTimer); roomWsTimer = null; }
+      if (!url || !state.roomCode) { paintRoomUi(); return; }
+      let ws;
+      try { ws = new WebSocket(url); } catch (e) { paintRoomUi(); return; }
+      roomWs = ws;
+      ws.onopen = () => {
+        try {
+          ws.send(JSON.stringify({
+            type: "join",
+            room: normRoomCode(state.roomCode),
+            deviceId: ensureDeviceId(),
+            cam: field("cam") ? field("cam").textContent.trim() : "",
+            role: isFollower() ? "satellite" : "master"
+          }));
+        } catch (e) {}
+        if (isMaster()) pushRoomState();
+        paintRoomUi();
+      };
+      ws.onmessage = (ev) => {
+        try {
+          const msg = JSON.parse(String(ev.data));
+          if (msg.type === "state" || msg.type === "field") applyRoomState(msg.type === "field" ? {
+            type: "state", room: state.roomCode, from: msg.from, fields: { [msg.k]: msg.v }, t: Date.now()
+          } : msg);
+        } catch (e) {}
+      };
+      ws.onclose = () => {
+        paintRoomUi();
+        if (state.roomCode && (state.syncUrl || "").trim()) {
+          roomWsTimer = setTimeout(connectRoomWs, 2500);
+        }
+      };
+      ws.onerror = () => { try { ws.close(); } catch (e) {} };
+      paintRoomUi();
+    }
+    function bindRoomTransport() {
+      ensureDeviceId();
+      ensureRoomBc();
+      connectRoomWs();
+      paintRoomUi();
+    }
+    function createRoom() {
+      const code = makeRoomCode();
+      state.roomCode = code;
+      persist();
+      bindRoomTransport();
+      if (isMaster()) pushRoomState();
+      showToast("Room " + code + " — open another tab as Follower + Join to test");
+      paintRoomUi();
+    }
+    function joinRoomPrompt() {
+      const cur = state.roomCode || "";
+      const entered = prompt("Enter room code (4–6 chars)", cur);
+      if (entered == null) return;
+      const code = normRoomCode(entered);
+      if (code.length < 4) { alert("Room code must be at least 4 characters."); return; }
+      state.roomCode = code;
+      persist();
+      bindRoomTransport();
+      pullLastRoomPush();
+      if (isMaster()) pushRoomState();
+      showToast("Joined room " + code);
+      paintRoomUi();
+    }
+    function leaveRoom() {
+      state.roomCode = "";
+      persist();
+      if (roomWs) { try { roomWs.onclose = null; roomWs.close(); } catch (e) {} roomWs = null; }
+      if (roomWsTimer) { clearTimeout(roomWsTimer); roomWsTimer = null; }
+      showToast("Left room");
+      paintRoomUi();
+    }
+    window.addEventListener("storage", (e) => {
+      if (!state.roomCode || !e.key || e.key !== roomStorageKey(state.roomCode)) return;
+      if (!e.newValue) return;
+      try { applyRoomState(JSON.parse(e.newValue)); } catch (err) {}
+    });
+
 
     async function unlockAudio() {
       if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
@@ -2172,7 +2451,10 @@
         const sc = Number(opts.score);
         if (syncHeard) $("status").textContent = Number.isFinite(sc) ? ("SYNC HEARD " + sc.toFixed(2)) : "SYNC HEARD";
         else $("status").textContent = Number.isFinite(sc) ? ("HEARD " + sc.toFixed(2)) : "HEARD";
-        if (syncHeard) showToast("SYNC HEARD — board would update from master when connected.");
+        if (syncHeard) {
+          if (state.roomCode) pullLastRoomPush();
+          showToast(state.roomCode ? "SYNC HEARD — pulled last room push (cam local)." : "SYNC HEARD — join a room (or Origin later) for field push.");
+        }
       } else $("status").textContent = "MARK";
       $("sticks").classList.add("closed");
       if (!mos) {
@@ -2472,6 +2754,33 @@
       if (isPro() && state.needMorningSetup) { afterUnlock(); return; }
       show("slate");
     });
+
+
+    function wireRoomButtons() {
+      const pairs = [
+        ["btnRoomCreate", createRoom], ["btnSetRoomCreate", createRoom],
+        ["btnRoomJoin", joinRoomPrompt], ["btnSetRoomJoin", joinRoomPrompt],
+        ["btnRoomLeave", leaveRoom], ["btnSetRoomLeave", leaveRoom],
+        ["btnRoomPush", () => { if (isMaster()) { pushRoomState(); showToast("Pushed room state"); } }],
+        ["btnSetRoomPush", () => { if (isMaster()) { pushRoomState(); showToast("Pushed room state"); } }]
+      ];
+      pairs.forEach(([id, fn]) => { const b = $(id); if (b) b.addEventListener("click", fn); });
+      if ($("setSyncUrl")) {
+        $("setSyncUrl").addEventListener("change", () => {
+          state.syncUrl = $("setSyncUrl").value.trim();
+          persist();
+          if (state.roomCode) connectRoomWs();
+          else paintRoomUi();
+        });
+        $("setSyncUrl").addEventListener("blur", () => {
+          state.syncUrl = $("setSyncUrl").value.trim();
+          persist();
+          if (state.roomCode) connectRoomWs();
+          else paintRoomUi();
+        });
+      }
+    }
+    wireRoomButtons();
 
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("sw.js").catch(() => {});
