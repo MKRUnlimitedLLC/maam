@@ -24,6 +24,13 @@ LISTEN
   cosine). Frequency marks watch a narrow FFT band above ambient.
   Enroll success shows a big GOT IT confirm.
 
+FOLLOWER HOME (slate-v17)
+  When This device = Follower: Home stack is Watch ads · unlock (if locked),
+  Train · learn sync mark (primary), Open slate, then tip. Lede shortens to
+  “Follower board — learn the master’s sync mark, then Listen to sync.”
+  body.role-follower keeps follower-only CTAs visible; paintPro never hides
+  btnHomeTrainFollow. Slate: Listen to sync is the dominant control.
+
 MASTER / FOLLOWER (slate-v16)
   state.role = master | follower (default master — single-device testing unchanged).
   Home or More → This device is Master / Follower.

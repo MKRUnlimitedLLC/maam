@@ -311,7 +311,13 @@
     .value.readonly:focus { background: transparent !important; }
     body.role-follower .master-only { display: none !important; }
     body.role-master .follower-only { display: none !important; }
-    .controls.follower-ctrls { grid-template-columns: 1.4fr 1fr 1fr 1fr; }
+    body.role-follower .follower-only { display: block; }
+    body.role-follower .controls.follower-only { display: grid; }
+    .controls.follower-ctrls { grid-template-columns: 1.9fr 0.9fr 0.9fr 0.9fr; }
+    body.role-follower #btnListenSync {
+      font-size: 12px; font-weight: 800; letter-spacing: 0.05em;
+      box-shadow: 0 0 0 1px rgba(46,204,113,.35);
+    }
     #toast {
       display: none; position: fixed; left: 50%; bottom: max(72px, calc(56px + env(safe-area-inset-bottom)));
       transform: translateX(-50%); z-index: 50; max-width: min(92vw, 420px);
@@ -391,7 +397,7 @@
       <div class="topbar"><span>Second Sticks</span><span class="badge" id="homeBadge">LOCKED</span></div>
       <div class="home" style="display:flex;flex-direction:column;">
         <h1>Second Sticks</h1>
-        <p class="lede">Second Sticks. Train a sound, hold the board up, make the mark. Dummy slate for iPhone and iPad. Ads never appear on the board the camera sees.</p>
+        <p class="lede" id="homeLede">Second Sticks. Train a sound, hold the board up, make the mark. Dummy slate for iPhone and iPad. Ads never appear on the board the camera sees.</p>
         <p class="fine">Dummy slate. The red numbers are wall-clock, not LTC. Fast enough to cut with. Not a Denecke. Working title — not a reserved App Store listing.</p>
         <label style="display:block;font-size:12px;letter-spacing:0.1em;text-transform:uppercase;color:#888;margin-top:4px">This device</label>
         <div class="role-row" id="homeRoleRow">
@@ -399,12 +405,12 @@
           <button type="button" id="btnRoleFollower">Follower</button>
         </div>
         <p class="fine" id="homeRoleHint">Master owns Learn frequency, full slate edit, and mark library. Follower: Train sync mark, Listen to sync, Test the mark. Default Master for single-device.</p>
-        <div class="stack">
+        <div class="stack" id="homeStack">
+          <button class="big ad" id="btnAd">Watch ads · unlock</button>
+          <button class="big primary follower-only" data-go="train" id="btnHomeTrainFollow">Train · learn sync mark</button>
           <button class="big primary" id="btnOpen">Open slate</button>
-          <button class="big ad" id="btnAd">Watch 3 ads · unlock 24 hours</button>
           <button class="big ghost" id="btnTip">Leave a donation</button>
           <button class="big ghost master-only" data-go="train" id="btnHomeTrain">Train your mark sound</button>
-          <button class="big ghost follower-only" data-go="train" id="btnHomeTrainFollow">Train · learn sync mark</button>
         </div>
         <p class="fine" id="homeStatus"></p>
         <p class="fine">On iPad: Safari over https, Share → Add to Home Screen, then hold landscape. Microphone listen needs https. A file from Files usually cannot use the mic.</p>
@@ -671,6 +677,32 @@
       applyRoleUi();
       paintPro();
     }
+    function paintHomeStack() {
+      const stack = $("homeStack") || document.querySelector("#view-home .stack");
+      if (!stack) return;
+      const ad = $("btnAd"), tip = $("btnTip"), open = $("btnOpen");
+      const trainM = $("btnHomeTrain"), trainF = $("btnHomeTrainFollow");
+      const fol = isFollower();
+      if (ad) {
+        ad.className = "big ad";
+        ad.textContent = fol ? "Watch ads · unlock" : "Watch 3 ads · unlock 24 hours";
+      }
+      if (tip) tip.className = "big ghost";
+      if (open) open.className = "big primary";
+      if (trainF) {
+        trainF.className = fol ? "big primary follower-only" : "big ghost follower-only";
+        trainF.dataset.go = "train";
+      }
+      if (trainM) {
+        trainM.className = "big ghost master-only";
+        trainM.dataset.go = "train";
+      }
+      // Follower: Ads (if shown) → Train sync → Open slate → tip. Master: Open → Ads → tip → Train.
+      const seq = fol
+        ? [ad, trainF, open, tip, trainM]
+        : [open, ad, tip, trainM, trainF];
+      seq.forEach((el) => { if (el) stack.appendChild(el); });
+    }
     function applyRoleUi() {
       const fol = isFollower();
       document.body.classList.toggle("role-follower", fol);
@@ -678,11 +710,17 @@
       if ($("setRole")) $("setRole").value = fol ? "follower" : "master";
       if ($("btnRoleMaster")) $("btnRoleMaster").classList.toggle("on", !fol);
       if ($("btnRoleFollower")) $("btnRoleFollower").classList.toggle("on", fol);
+      if ($("homeLede")) {
+        $("homeLede").textContent = fol
+          ? "Follower board — learn the master’s sync mark, then Listen to sync."
+          : "Second Sticks. Train a sound, hold the board up, make the mark. Dummy slate for iPhone and iPad. Ads never appear on the board the camera sees.";
+      }
       if ($("homeRoleHint")) {
         $("homeRoleHint").textContent = fol
           ? "Follower board: Learn sync mark (Train), Listen to sync, Test the mark. Shared slate fields are read-only; Camera stays local."
           : "Master owns Learn frequency, full slate edit, and mark library. Follower: Train sync mark, Listen to sync, Test the mark. Default Master for single-device.";
       }
+      paintHomeStack();
       if ($("roleBadge")) $("roleBadge").textContent = fol ? "FOLLOWER" : "MASTER";
       if ($("trainTopTitle")) $("trainTopTitle").textContent = fol ? "Learn sync mark" : "Train mark sound";
       if ($("followHzInput") && state.followHz != null) $("followHzInput").value = state.followHz === "" || state.followHz == null ? "" : String(state.followHz);
@@ -905,6 +943,18 @@
       $("homeBadge").textContent = on ? "OPEN 24H" : "LOCKED";
       $("homeBadge").classList.toggle("pro", on);
       $("btnAd").style.display = on ? "none" : "block";
+      // Never leave follower Train buried/hidden by inline display from ads path.
+      const trainF = $("btnHomeTrainFollow");
+      if (trainF) {
+        if (isFollower()) trainF.style.display = "block";
+        else trainF.style.removeProperty("display");
+      }
+      const trainM = $("btnHomeTrain");
+      if (trainM) {
+        if (isMaster()) trainM.style.removeProperty("display");
+        else trainM.style.removeProperty("display");
+      }
+      paintHomeStack();
       $("btnOpen").disabled = false;
       const left = hoursLeft();
       $("homeStatus").textContent = on
