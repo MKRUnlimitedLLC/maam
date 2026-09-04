@@ -22,9 +22,13 @@ LISTEN
 
 TRAIN A CUSTOM MARK
   Train tab → Record → “Ready to record your mark?” → Yes → countdown
-  5…1 → mic records ~1 second at RECORD (mic off during 5–2). Repeat
-  5 times. Test listen. Match threshold (More) sets how strict cosine
-  match is (lower = looser). Fingerprints only — no raw audio.
+  5…4…3…2…1…0. Mic opens on Yes and stays warm through the countdown
+  (iPad-friendly). Capture starts 0.5s before 0; at 0 the overlay says
+  “Make Noise now” for the rest of a 1s window. The sample fingerprint
+  is the prominent/peak-energy structure in that second, not a flat
+  average of silence. Fail floor is low; errors show measured peak RMS.
+  Repeat 5 times. Test listen. Match threshold (More) sets how strict
+  cosine match is (lower = looser). Fingerprints only — no raw audio.
 
 MARK
   Tap Mark or the sticks if Listen misses. Always available once the
@@ -33,10 +37,12 @@ MARK
 MIC
   Safari over https or a Home Screen app from a hosted page.
   Opening the raw file from Files often cannot use the microphone.
+  Train keeps the mic warm from Yes through the 1s capture so iOS does
+  not hand back a silent stream after stop/reopen.
 
 PRIVACY
-  Mic is on only while Listen is armed, or during the ~1s Train capture
-  (not during the countdown). Matching is on-device.
+  Mic is on while Listen is armed, or from Train Yes through the ~1s
+  capture (including the 5…0 countdown). Matching is on-device.
   Fingerprints and the shot log stay in localStorage. No raw enrollment
   audio. No account, cloud, or analytics. Placeholder ads are not AdMob.
 
@@ -57,9 +63,10 @@ IPAD MVP
 
 MORNING SETUP
   After you unlock the day (ads or honor tip), a first-sign-in flow opens.
-  Step 1 — Train Your Mark: Record → ready Yes → countdown 5…1 → ~1s
-  capture at RECORD (five times). Fingerprint only, not a recording.
-  That print is the mark Listen will fire on. Match threshold in More.
+  Step 1 — Train Your Mark: Record → ready Yes → countdown 5…0 →
+  Make Noise now (~1s peak window; five times). Fingerprint only, not
+  a recording. That print is the mark Listen will fire on. Match
+  threshold in More.
   Step 2 — Test: make the sound once; MATCH means you are ready.
   Step 3 — Board: Listen → hold up → make the mark → take is logged.
   You can skip to generic clap, or keep yesterday’s mark if you already trained.

@@ -268,7 +268,7 @@
     </div>
     <div id="trainCount">
       <div id="trainCountNum">5</div>
-      <p id="trainCountHint">Make your sound when you see RECORD</p>
+      <p id="trainCountHint">Make Noise now at 0</p>
     </div>
   </div>
 
@@ -353,7 +353,7 @@
           <p class="lede" style="font-size:15px;max-width:none">Record the sound you will use as the mark. Whistle, clap, snap, tone, clicker, spoken word, or real sticks. The app listens and builds a print (waveform bands). That print is the mark: when Listen hears it, sticks slam and the take is logged.</p>
           <canvas class="wave" id="setupWave" width="560" height="72" aria-label="Mark fingerprint"></canvas>
           <div class="dots" id="setupDots"></div>
-          <p class="fine" id="setupTrainStatus">Tap Record → ready → countdown → make the sound at RECORD. Five samples.</p>
+          <p class="fine" id="setupTrainStatus">Tap Record → Yes → countdown 5…0 → Make Noise now. Five samples. Mic stays warm through the countdown.</p>
           <div class="stack">
             <button class="big primary" id="btnSetupRec">Record sample 1 of 5</button>
             <button class="big ghost" id="btnSetupKeep" style="display:none">Keep yesterday’s mark</button>
@@ -387,7 +387,7 @@
     <section class="screen" id="view-train">
       <div class="topbar"><span>Train mark sound</span></div>
       <div class="list settings">
-        <p class="fine">Record the same sound 5 times — a whistle, a snap, a clicker, a spoken “mark,” or your sticks. Tap Record → ready prompt → countdown 5…1 → mic records ~1s. Fingerprints only. Match strictness is under More → Match threshold.</p>
+        <p class="fine">Record the same sound 5 times — a whistle, a snap, a clicker, a spoken “mark,” or your sticks. Tap Record → Yes → countdown 5…0 (mic warm) → Make Noise now for ~1s. Print uses the loudest window. Fingerprints only. Match strictness is under More → Match threshold.</p>
         <div class="dots" id="trainDots"></div>
         <button class="big primary" id="btnRec">Record sample 1 of 5</button>
         <button class="big ghost" id="btnTest" disabled>Test listen</button>
@@ -458,7 +458,8 @@
     let trainCdTimer = null;
     let trainCdLeft = 0;
     const TRAIN_MS = 1000;
-    const TRAIN_RMS_FLOOR = 0.008;
+    const TRAIN_RMS_FLOOR = 0.0015;
+    let trainWarmRaf = null;
     let state = {
       fields: { prod: "UNTITLED", roll: "A001", scene: "1", take: "1", dir: "", cam: "", fps: "24", ie: "INT", dn: "DAY", date: "" },
       log: [],
@@ -611,7 +612,7 @@
       $("btnSetupKeep").style.display = n >= 3 ? "block" : "none";
       $("setupTrainStatus").textContent = n >= 5
         ? "Print ready. That fingerprint is today’s mark. Next: test it."
-        : (n ? `Got ${n} of 5. Same sound again — countdown then RECORD.` : "Tap Record → Yes → countdown → make the sound at RECORD.");
+        : (n ? `Got ${n} of 5. Same sound again — countdown 5…0, then Make Noise now.` : "Tap Record → Yes → countdown 5…0 → Make Noise now.");
       drawSetupWave(meanPrint());
     }
     function drawSetupWave(vec) {
@@ -733,6 +734,47 @@
     function clearTrainCdTimer() {
       if (trainCdTimer) { clearTimeout(trainCdTimer); trainCdTimer = null; }
     }
+    function clearTrainWarm() {
+      if (trainWarmRaf) { cancelAnimationFrame(trainWarmRaf); trainWarmRaf = null; }
+    }
+    function rmsFromAnalyser() {
+      if (!analyser) return 0;
+      const time = new Float32Array(analyser.fftSize);
+      analyser.getFloatTimeDomainData(time);
+      let s = 0;
+      for (let i = 0; i < time.length; i++) s += time[i] * time[i];
+      return Math.sqrt(s / time.length);
+    }
+    function startWarmPeakHint(baseHint) {
+      clearTrainWarm();
+      const tick = () => {
+        if (!analyser || !$("trainOverlay").classList.contains("on")) { trainWarmRaf = null; return; }
+        const p = rmsFromAnalyser();
+        $("trainCountHint").textContent = `${baseHint} · live ${p.toFixed(4)}`;
+        trainWarmRaf = requestAnimationFrame(tick);
+      };
+      trainWarmRaf = requestAnimationFrame(tick);
+    }
+    function peakWindowPrint(frames) {
+      if (!frames.length) return null;
+      let peakIdx = 0;
+      let peakRms = frames[0].rms;
+      for (let i = 1; i < frames.length; i++) {
+        if (frames[i].rms > peakRms) { peakRms = frames[i].rms; peakIdx = i; }
+      }
+      const lo = Math.max(0, peakIdx - 4);
+      const hi = Math.min(frames.length - 1, peakIdx + 4);
+      const thr = peakRms * 0.5;
+      let selected = [];
+      for (let i = lo; i <= hi; i++) {
+        if (frames[i].rms >= thr) selected.push(frames[i]);
+      }
+      if (!selected.length) selected = frames.slice(lo, hi + 1);
+      const acc = new Array(BANDS).fill(0);
+      selected.forEach((f) => { for (let i = 0; i < BANDS; i++) acc[i] += f.fp[i]; });
+      const inv = 1 / selected.length;
+      return { print: acc.map((v) => v * inv), peakRms };
+    }
     function finishTrainUi(okMsg, failMsg) {
       hideTrainOverlay();
       recBusy = false;
@@ -754,17 +796,19 @@
     }
     function hideTrainOverlay() {
       clearTrainCdTimer();
+      clearTrainWarm();
       const ov = $("trainOverlay");
       ov.classList.remove("on");
       $("trainReady").classList.remove("on");
       $("trainCount").classList.remove("on");
       $("trainCountNum").classList.remove("rec");
       $("trainCountNum").textContent = "5";
-      $("trainCountHint").textContent = "Make your sound when you see RECORD";
+      $("trainCountHint").textContent = "Make Noise now at 0";
     }
     function cancelTrainOverlay(reenable) {
       const wasOn = $("trainOverlay").classList.contains("on");
       clearTrainCdTimer();
+      clearTrainWarm();
       hideTrainOverlay();
       if (wasOn || reenable) {
         recBusy = false;
@@ -779,87 +823,96 @@
       $("btnRec").disabled = true;
       $("btnSetupRec").disabled = true;
       clearTrainCdTimer();
+      clearTrainWarm();
       $("trainOverlay").classList.add("on");
       $("trainReady").classList.add("on");
       $("trainCount").classList.remove("on");
       $("trainCountNum").classList.remove("rec");
-      $("trainCountHint").textContent = "Make your sound when you see RECORD";
+      $("trainCountHint").textContent = "Make Noise now at 0";
     }
+    /** Countdown 5…1 (1s each), then capture starts at t=−0.5; show 0 + Make Noise now 500ms later. Mic already warm. */
     function startTrainCountdown() {
       $("trainReady").classList.remove("on");
       $("trainCount").classList.add("on");
       $("trainCountNum").classList.remove("rec");
-      trainCdLeft = 5;
-      $("trainCountNum").textContent = String(trainCdLeft);
-      $("trainCountHint").textContent = "Make your sound when you see RECORD";
-      // Mic stays closed during 5–2; enrollSample opens it at 1 / RECORD.
-      const tick = () => {
-        trainCdLeft -= 1;
-        if (trainCdLeft > 1) {
-          $("trainCountNum").textContent = String(trainCdLeft);
-          trainCdTimer = setTimeout(tick, 1000);
+      const nums = [5, 4, 3, 2, 1];
+      let i = 0;
+      $("trainCountNum").textContent = "5";
+      startWarmPeakHint("Mic live — sound at 0");
+      const next = () => {
+        i += 1;
+        if (i < nums.length) {
+          $("trainCountNum").textContent = String(nums[i]);
+          trainCdTimer = setTimeout(next, 1000);
           return;
         }
-        $("trainCountNum").textContent = "1";
-        trainCdTimer = setTimeout(() => {
-          trainCdTimer = null;
-          enrollSample();
-        }, 200);
+        // End of “1” second → t=−0.5: begin 1s capture on existing analyser
+        trainCdTimer = null;
+        clearTrainWarm();
+        beginEnrollCapture({ zeroAtMs: 500 });
       };
-      trainCdTimer = setTimeout(tick, 1000);
+      trainCdTimer = setTimeout(next, 1000);
     }
 
-    /** Open mic only for TRAIN_MS, build fingerprint, save sample. No spike detection. */
-    async function enrollSample() {
-      $("trainCountNum").textContent = "RECORD";
-      $("trainCountNum").classList.add("rec");
-      $("trainCountHint").textContent = "LISTENING… make your mark sound now";
-      $("trainStatus").textContent = "Recording 1s…";
-      if ($("view-setup").classList.contains("on")) $("setupTrainStatus").textContent = "Recording 1s…";
-      try {
-        const mic = await openMic();
-        micStream = mic.stream;
-        analyser = mic.an;
-      } catch (err) {
-        const msg = "Microphone permission is required. Open this in Safari over https, or Add to Home Screen from a hosted page. A file from Files often cannot use the mic.";
-        hideTrainOverlay();
-        finishTrainUi(null, msg);
-        if ($("status")) $("status").textContent = "MIC BLOCKED";
-        alert(msg);
+    /** Capture TRAIN_MS on warm mic; fingerprint = peak-energy window. */
+    function beginEnrollCapture(opts) {
+      const zeroAtMs = (opts && typeof opts.zeroAtMs === "number") ? opts.zeroAtMs : 0;
+      if (!analyser || !micStream) {
+        finishTrainUi(null, "Microphone not ready. Tap Record and try Yes again.");
         return;
       }
       const time = new Float32Array(analyser.fftSize);
       const freq = new Uint8Array(analyser.frequencyBinCount);
+      const frames = [];
       listenOn = true;
+      let showedZero = zeroAtMs <= 0;
+      let livePeak = 0;
       const t0 = performance.now();
-      let peakRms = 0;
-      let frames = 0;
-      const acc = new Array(BANDS).fill(0);
+      if (showedZero) {
+        $("trainCountNum").textContent = "0";
+        $("trainCountNum").classList.add("rec");
+        $("trainCountHint").textContent = "Make Noise now · peak 0.0000";
+      } else {
+        $("trainCountHint").textContent = "Get ready…";
+      }
+      $("trainStatus").textContent = "Capturing…";
+      if ($("view-setup").classList.contains("on")) $("setupTrainStatus").textContent = "Capturing…";
+
       const tickTrain = () => {
         if (!listenOn) {
           finishTrainUi(null, "Recording cancelled.");
           return;
+        }
+        const elapsed = performance.now() - t0;
+        if (!showedZero && elapsed >= zeroAtMs) {
+          showedZero = true;
+          $("trainCountNum").textContent = "0";
+          $("trainCountNum").classList.add("rec");
         }
         analyser.getFloatTimeDomainData(time);
         analyser.getByteFrequencyData(freq);
         let rms = 0;
         for (let i = 0; i < time.length; i++) rms += time[i] * time[i];
         rms = Math.sqrt(rms / time.length);
-        if (rms > peakRms) peakRms = rms;
-        const fp = fingerprintFrom(freq);
-        for (let i = 0; i < BANDS; i++) acc[i] += fp[i];
-        frames += 1;
-        if (performance.now() - t0 < TRAIN_MS) {
+        if (rms > livePeak) livePeak = rms;
+        frames.push({ rms, fp: fingerprintFrom(freq) });
+        if (showedZero) {
+          $("trainCountHint").textContent = `Make Noise now · peak ${livePeak.toFixed(4)}`;
+        } else {
+          $("trainCountHint").textContent = `Get ready · peak ${livePeak.toFixed(4)}`;
+        }
+        if (elapsed < TRAIN_MS) {
           listenRaf = requestAnimationFrame(tickTrain);
           return;
         }
         stopListen();
-        if (peakRms < TRAIN_RMS_FLOOR || frames < 1) {
-          finishTrainUi(null, "No sound heard. Try closer to the mic.");
+        const built = peakWindowPrint(frames);
+        const peakRms = built ? built.peakRms : 0;
+        if (!built || peakRms < TRAIN_RMS_FLOOR || frames.length < 1) {
+          finishTrainUi(null, `No sound heard (peak ${peakRms.toFixed(4)}). Closer / louder.`);
           return;
         }
-        const avg = acc.map((v) => v / frames);
-        state.prints.push(avg);
+        state.prints.push(built.print);
         if (state.prints.length > 8) state.prints = state.prints.slice(-8);
         if (state.prints.length >= 5) state.mode = "trained";
         persist();
@@ -869,6 +922,30 @@
         finishTrainUi(ok, null);
       };
       listenRaf = requestAnimationFrame(tickTrain);
+    }
+
+    /** Legacy / direct path: ensure mic open, show 0, capture 1s peak print. */
+    async function enrollSample() {
+      $("trainCountNum").textContent = "0";
+      $("trainCountNum").classList.add("rec");
+      $("trainCountHint").textContent = "Make Noise now";
+      $("trainStatus").textContent = "Capturing…";
+      if ($("view-setup").classList.contains("on")) $("setupTrainStatus").textContent = "Capturing…";
+      if (!micStream || !analyser) {
+        try {
+          const mic = await openMic();
+          micStream = mic.stream;
+          analyser = mic.an;
+        } catch (err) {
+          const msg = "Microphone permission is required. Open this in Safari over https, or Add to Home Screen from a hosted page. A file from Files often cannot use the mic.";
+          hideTrainOverlay();
+          finishTrainUi(null, msg);
+          if ($("status")) $("status").textContent = "MIC BLOCKED";
+          alert(msg);
+          return;
+        }
+      }
+      beginEnrollCapture({ zeroAtMs: 0 });
     }
 
     async function startListen(opts) {
@@ -1131,10 +1208,12 @@
     });
     $("btnRec").addEventListener("click", () => openTrainReady());
     $("btnTrainYes").addEventListener("click", async () => {
-      // Prime permission on Yes (user gesture), then close — mic off for countdown 5–2.
+      // Open mic on Yes (user gesture) and keep tracks alive through countdown → capture.
       try {
-        const primed = await openMic();
-        primed.stream.getTracks().forEach((t) => t.stop());
+        if (micStream) stopListen();
+        const mic = await openMic();
+        micStream = mic.stream;
+        analyser = mic.an;
       } catch (err) {
         const msg = "Microphone permission is required. Open this in Safari over https, or Add to Home Screen from a hosted page. A file from Files often cannot use the mic.";
         hideTrainOverlay();
