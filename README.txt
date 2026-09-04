@@ -17,20 +17,41 @@ DONATIONS
   without watching ads (honor system — a web page cannot verify PayPal).
 
 LISTEN
-  Tap Listen, hold the board up to camera, make the mark sound.
+  Tap Listen, hold the board up to camera, make the mark sound (or tone).
   Generic mode: any sharp clap / snap.
-  Trained mode: only the sound you enrolled.
-  Board trained Listen now matches like Test — continuous ~1.2s rolling peak-window cosine for the arm window (no soft-rise gate). Enroll success shows a big GOT IT confirm.
+  Trained mode: active mark — sound fingerprints or frequency band.
+  Board trained Listen matches like Test for sound marks (rolling peak
+  cosine). Frequency marks watch a narrow FFT band above ambient.
+  Enroll success shows a big GOT IT confirm.
 
-TRAIN A CUSTOM MARK
-  Train tab → Record → “Ready to record your mark?” → Yes → countdown
+MARK LIBRARY (slate-v14)
+  Each mark is its own library entry (fingerprints only — never raw WAV).
+  state.marks[{ id, name, kind, prints|hz, created }] + activeMarkId.
+  Migrate: old single prints[] → one “Mark 1” sound mark, set active.
+  Train tab: list, tap to activate, Learn new sound, Learn frequency,
+  Rename, Delete, Test listen. Slate shows Mark: name near Listen;
+  Change / Learn sound / Learn freq. Scene change asks keep vs pick.
+  Learn new sound reuses #trainOverlay (Yes → 5…0 → Make Noise → GOT IT
+  → name). Extra samples append to the active sound mark until Learn new.
+
+FREQUENCY MARKS (MVP / Pro-path test)
+  kind: "frequency" stores { hz, bandHz }. Train → Learn frequency:
+  Scan ambient ~1.5s, pick quietest bin in ~12–20 kHz (or 8–18 if the
+  device Nyquist is weak); confirm with a short speaker tone; name & save.
+  Manual Hz slider 1000–20000 when auto-scan fails. Listen: soft energy
+  above ambient in that band → sticks slam. Honest limit: near-ultrasound
+  may fail on some iPads / speakers; weak ambient scan warns you.
+  Test with a Samsung S22 tone generator (or same-device Play tone) aimed
+  at the slate mic while Listen is armed.
+
+TRAIN A CUSTOM SOUND MARK
+  Train tab → Learn new sound or Record → “Ready…?” → Yes → countdown
   5…4…3…2…1…0. Mic opens on Yes and stays warm through the countdown
   (iPad-friendly). Capture starts 0.5s before 0; at 0 the overlay says
-  “Make Noise now” for the rest of a 1s window. The sample fingerprint
-  is the prominent/peak-energy structure in that second, not a flat
-  average of silence. Fail floor is low; errors show measured peak RMS.
-  Repeat 5 times. Test listen (~3.5s peak window, always shows MATCH/NO MATCH 0.xx). Match threshold (More) sets how strict
-  cosine match is (lower = looser). Fingerprints only — no raw audio.
+  “Make Noise now” for the rest of a 1s window. Print = peak-energy
+  structure. Fail floor is low; errors show measured peak RMS.
+  Repeat 5 times (save allowed at ≥3). Test listen (~3.5s). Match
+  threshold (More) sets cosine strictness. Fingerprints only — no WAV.
 
 MARK
   Tap Mark or the sticks if Listen misses. Always available once the
@@ -44,8 +65,9 @@ MIC
 
 PRIVACY
   Mic is on while Listen is armed, or from Train Yes through the ~1s
-  capture (including the 5…0 countdown). Matching is on-device.
-  Fingerprints and the shot log stay in localStorage. No raw enrollment
+  capture (including the 5…0 countdown), or during frequency scan.
+  Matching is on-device. Mark fingerprints / Hz and the shot log stay in
+  localStorage (slate-app-v2). Reusable across shots. No raw enrollment
   audio. No account, cloud, or analytics. Placeholder ads are not AdMob.
 
 DISCLAIMER
@@ -59,7 +81,7 @@ IPAD MVP
   Open the Home Screen icon, rotate landscape, unlock the day, Open slate.
   Scene / take type is sized for a camera across the set. Nav stays off the board face.
   Mic still needs https. file:// from Files usually cannot listen.
-  Listen / Train algorithms are unchanged. Noisy-room enrollment is not proven yet.
+  Near-ultrasound frequency marks are not proven on all iPads.
   Not an App Store binary. Not LTC. Not a lockit box.
 
 
@@ -67,8 +89,7 @@ MORNING SETUP
   After you unlock the day (ads or honor tip), a first-sign-in flow opens.
   Step 1 — Train Your Mark: Record → ready Yes → countdown 5…0 →
   Make Noise now (~1s peak window; five times). Fingerprint only, not
-  a recording. That print is the mark Listen will fire on. Match
-  threshold in More.
-  Step 2 — Test: make the sound once; MATCH means you are ready.
+  a recording. Or skip and use Learn frequency from Train later.
+  Step 2 — Test: make the sound / tone once; MATCH means you are ready.
   Step 3 — Board: Listen → hold up → make the mark → take is logged.
   You can skip to generic clap, or keep yesterday’s mark if you already trained.
