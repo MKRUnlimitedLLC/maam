@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="true" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+  <meta name="apple-mobile-web-app-title" content="MAAM" />
+  <meta name="theme-color" content="#111111" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <title>MAAM</title>
+  <style>
+    :root {
+      --bg: #111;
+      --panel: #1a1a1a;
+      --board: #f3efe6;
+      --ink: #111;
+      --red: #c41e3a;
+      --ok: #2ecc71;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      margin: 0; height: 100%; height: 100dvh;
+      background: var(--bg); color: #eee;
+      font-family: -apple-system, "Avenir Next", "Helvetica Neue", system-ui, sans-serif;
+      overflow: hidden; touch-action: manipulation;
+      user-select: none; -webkit-user-select: none;
+    }
+    body.editing, body.editing * { user-select: text; -webkit-user-select: text; }
+    #app { height: 100%; display: flex; flex-direction: column; }
+    .screen { display: none; flex: 1; min-height: 0; flex-direction: column; }
+    .screen.on { display: flex; }
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 14px 8px; padding-top: max(10px, env(safe-area-inset-top));
+      font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: #aaa;
+    }
+    .badge { font-size: 10px; letter-spacing: 0.12em; padding: 4px 8px; border: 1px solid #333; border-radius: 999px; }
+    .badge.pro { border-color: #2ecc71; color: #2ecc71; }
+    .home { padding: 12px 20px 24px; gap: 16px; }
+    .home h1 { font-size: 40px; letter-spacing: 0.22em; margin: 8px 0 0; }
+    .home .lede { color: #999; line-height: 1.45; max-width: 420px; }
+    .stack { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+    button.big {
+      appearance: none; border: 0; border-radius: 10px;
+      padding: 16px 18px; font-size: 16px; font-weight: 700;
+      letter-spacing: 0.08em; text-transform: uppercase;
+    }
+    button.big.primary { background: #f3efe6; color: #111; }
+    button.big.ad { background: var(--red); color: #fff; }
+    button.big.ghost { background: #222; color: #eee; border: 1px solid #333; }
+    button.big:disabled { opacity: .45; }
+    .fine { font-size: 12px; color: #777; line-height: 1.4; }
+
+    .slate-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 10px 8px; gap: 8px; }
+    .sticks { position: relative; height: 52px; flex: 0 0 52px; }
+    .stick {
+      position: absolute; left: 0; right: 0; height: 24px;
+      background: repeating-linear-gradient(115deg, #111 0 18px, #f3efe6 18px 36px);
+      border: 2px solid #111; transform-origin: 18px center;
+    }
+    .stick.bot { top: 26px; }
+    .stick.top { top: 0; transform: rotate(-18deg); transition: transform 70ms ease-in; box-shadow: 0 4px 10px rgba(0,0,0,.35); }
+    .sticks.closed .stick.top { transform: rotate(0); }
+    .board {
+      flex: 1; min-height: 0; background: var(--board); color: var(--ink);
+      border: 3px solid #111; display: grid;
+      grid-template-rows: auto 1fr auto auto auto; position: relative;
+    }
+    .board.tail { transform: rotate(180deg); }
+    .row { display: grid; border-bottom: 2px solid #1a1a1a; }
+    .cell { border-right: 2px solid #1a1a1a; padding: 4px 8px 6px; display: flex; flex-direction: column; min-width: 0; }
+    .cell:last-child { border-right: 0; }
+    .label { font-size: 10px; letter-spacing: 0.16em; font-weight: 700; color: #666; text-transform: uppercase; }
+    .value { font-weight: 800; outline: none; min-height: 1.1em; text-transform: uppercase; line-height: 1.05; }
+    .value:focus { background: #ffe08a; }
+    .prod { grid-template-columns: 1.4fr .7fr; }
+    .prod .value { font-size: clamp(16px, 4vw, 30px); }
+    .ids { grid-template-columns: .9fr 1.2fr .9fr; }
+    .ids .value { font-size: clamp(26px, 8vw, 68px); }
+    .crew { grid-template-columns: 1fr 1fr; }
+    .crew .value { font-size: clamp(15px, 3.4vw, 26px); }
+    .meta { grid-template-columns: .7fr .7fr .8fr .7fr; }
+    .meta .value { font-size: clamp(13px, 3vw, 20px); }
+    .tc-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 6px 10px; background: #111; color: #f3efe6;
+      font-variant-numeric: tabular-nums; font-weight: 700;
+    }
+    .tc { font-family: ui-monospace, Menlo, monospace; color: #ff3b30; font-size: clamp(16px, 4vw, 26px); }
+    .mos-banner {
+      display: none; position: absolute; inset: 0; align-items: center; justify-content: center;
+      font-size: clamp(48px, 16vw, 110px); font-weight: 900; letter-spacing: 0.12em;
+      color: rgba(196,30,58,.18); pointer-events: none;
+    }
+    .board.mos-on .mos-banner { display: flex; }
+    .free-mark { position: absolute; right: 8px; bottom: 36px; font-size: 10px; letter-spacing: 0.14em; color: rgba(0,0,0,.28); font-weight: 800; }
+    .board.pro .free-mark { display: none; }
+    .listen-banner { display: none; position: absolute; left: 8px; top: 8px; font-size: 11px; font-weight: 800; letter-spacing: 0.16em; color: #c41e3a; }
+    .board.listening .listen-banner { display: block; }
+    .expire-banner {
+      display: none; text-align: center; font-size: 11px; letter-spacing: 0.08em;
+      color: #c9a227; padding: 4px 0 0;
+    }
+    .expire-banner.on { display: block; }
+    .controls { display: grid; grid-template-columns: 1fr 1.3fr 1fr 1fr; gap: 7px; }
+    .ctrl {
+      background: #1c1c1c; color: #eee; border: 1px solid #333;
+      padding: 11px 6px; font-size: 11px; font-weight: 700;
+      letter-spacing: 0.1em; text-transform: uppercase; border-radius: 6px;
+    }
+    .ctrl.mark { background: var(--red); border-color: #8b1428; font-size: 15px; }
+    .ctrl.listen { background: #1c3d2e; border-color: #2ecc71; }
+    .ctrl.listen.hot { background: #2ecc71; color: #111; animation: pulse 1s infinite; }
+    .ctrl.on { background: #f3efe6; color: #111; }
+    @keyframes pulse { 50% { opacity: .7; } }
+    .nav {
+      display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px;
+      padding: 6px 8px calc(8px + env(safe-area-inset-bottom));
+    }
+    .nav button { background: transparent; border: 0; color: #888; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; padding: 8px 0; }
+    .nav button.here { color: #f3efe6; }
+    .list { flex: 1; overflow: auto; padding: 0 16px 16px; -webkit-overflow-scrolling: touch; }
+    .shot { background: var(--panel); border: 1px solid #2a2a2a; border-radius: 10px; padding: 12px; margin-bottom: 8px; }
+    .shot b { font-size: 18px; }
+    .shot .sub { color: #888; font-size: 12px; margin-top: 4px; }
+    .settings label { display: block; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: #888; margin: 14px 0 6px; }
+    .settings input, .settings select {
+      width: 100%; background: #1a1a1a; border: 1px solid #333; color: #eee;
+      padding: 12px; border-radius: 8px; font-size: 16px;
+    }
+    .dots { display: flex; gap: 8px; margin: 12px 0 18px; }
+    .dot { width: 14px; height: 14px; border-radius: 50%; background: #333; }
+    .dot.got { background: var(--ok); }
+    .dot.now { box-shadow: 0 0 0 3px rgba(46,204,113,.35); }
+    .matchbox {
+      min-height: 64px; border: 1px solid #333; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; font-weight: 800; letter-spacing: 0.16em; margin: 12px 0;
+    }
+    .matchbox.yes { background: #143322; color: var(--ok); border-color: #2ecc71; }
+    .matchbox.no { background: #2a1518; color: #e74c3c; border-color: #c41e3a; }
+    #flash { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 40; }
+    #flash.go { animation: flash 110ms ease-out; }
+    @keyframes flash { from { opacity: 1; } to { opacity: 0; } }
+    #ad {
+      display: none; position: fixed; inset: 0; z-index: 30;
+      background: #000; color: #fff; flex-direction: column;
+      align-items: center; justify-content: center; gap: 16px; text-align: center; padding: 24px;
+    }
+    #ad.on { display: flex; }
+    #ad .box {
+      width: min(92vw, 420px); aspect-ratio: 16/9; background: #1a1a1a; border: 1px solid #333;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 8px; letter-spacing: 0.08em; text-transform: uppercase;
+    }
+    #ad .box b { font-size: 22px; letter-spacing: 0.14em; }
+    .progress { width: min(92vw, 420px); height: 4px; background: #333; }
+    .progress > i { display: block; height: 100%; width: 0; background: var(--red); }
+    .lock {
+      display: none; position: absolute; inset: 0; background: rgba(0,0,0,.72);
+      color: #fff; align-items: center; justify-content: center; text-align: center;
+      padding: 24px; z-index: 5; flex-direction: column; gap: 12px;
+    }
+    .lock.on { display: flex; }
+    @media (max-width: 520px) and (orientation: portrait) {
+      .controls { grid-template-columns: 1fr 1fr; }
+      .meta { grid-template-columns: 1fr 1fr; }
+    }
+    /* iPad / large: camera-readable dummy board. Chrome stays off the clapper face. */
+    @media (min-width: 768px) {
+      .home { max-width: 560px; padding: 24px 28px 32px; }
+      .home h1 { font-size: 56px; }
+      .sticks { height: 72px; flex: 0 0 72px; }
+      .stick { height: 32px; }
+      .stick.bot { top: 38px; }
+      .stick.top { transform-origin: 28px center; }
+      .ids .value { font-size: clamp(48px, 8vw, 112px); }
+      .prod .value { font-size: clamp(22px, 3.2vw, 44px); }
+      .crew .value { font-size: clamp(20px, 2.6vw, 36px); }
+      .meta .value { font-size: clamp(16px, 2.2vw, 28px); }
+      .tc { font-size: clamp(22px, 3vw, 40px); }
+      .label { font-size: 12px; }
+      .ctrl { padding: 16px 8px; font-size: 13px; }
+      .ctrl.mark { font-size: 20px; }
+      .nav button { font-size: 13px; padding: 10px 0; }
+    }
+    @media (min-width: 768px) and (orientation: landscape) {
+      .slate-wrap { padding: 0 14px 6px; gap: 6px; }
+      .sticks { height: 84px; flex: 0 0 84px; }
+      .stick { height: 36px; }
+      .stick.bot { top: 46px; }
+      .board { border-width: 4px; }
+      .ids .value { font-size: clamp(56px, 9vh, 128px); }
+      .nav { padding: 4px 8px calc(6px + env(safe-area-inset-bottom)); }
+    }
+    @media (display-mode: standalone) {
+      .home { padding-top: 8px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="flash"></div>
+  <div id="ad">
+    <div class="box">
+      <b id="adTitle">Ad 1 of 3</b>
+      <div id="adCopy">Placeholder · wire AdMob later</div>
+    </div>
+    <div class="progress"><i id="adbar"></i></div>
+    <div id="adcount">Unlocks the slate for 24 hours</div>
+    <button class="big ghost" id="btnAdFail" style="display:none;max-width:420px">Ads would not load · continue</button>
+  </div>
+
+  <div id="app">
+    <section class="screen home on" id="view-home">
+      <div class="topbar"><span>MAAM</span><span class="badge" id="homeBadge">LOCKED</span></div>
+      <div class="home" style="display:flex;flex-direction:column;">
+        <h1>MAAM</h1>
+        <p class="lede">Make Anything A Mark. Train a sound, hold the board up, make the mark. Dummy slate for iPhone and iPad. Ads never appear on the board the camera sees.</p>
+        <p class="fine">Dummy slate. The red numbers are wall-clock, not LTC. Fast enough to cut with. Not a Denecke. Working name — not a reserved App Store listing.</p>
+        <div class="stack">
+          <button class="big primary" id="btnOpen">Open slate</button>
+          <button class="big ad" id="btnAd">Watch 3 ads · unlock 24 hours</button>
+          <button class="big ghost" id="btnTip">Leave a donation</button>
+          <button class="big ghost" data-go="train">Train your mark sound</button>
+        </div>
+        <p class="fine" id="homeStatus"></p>
+        <p class="fine">On iPad: Safari over https, Share → Add to Home Screen, then hold landscape. Microphone listen needs https. A file from Files usually cannot use the mic.</p>
+        <p class="fine">Mic is used only while Listen or Train is armed. Fingerprints stay on this device. No account, no cloud.</p>
+      </div>
+    </section>
+
+    <section class="screen" id="view-slate">
+      <div class="slate-wrap">
+        <div class="sticks" id="sticks">
+          <div class="stick bot"></div>
+          <div class="stick top"></div>
+        </div>
+        <div class="board" id="board">
+          <div class="lock" id="slateLock">
+            <div>LOCKED</div>
+            <div class="fine" style="color:#ccc">Watch the 3 morning ads on Home to use the board for 24 hours.</div>
+          </div>
+          <div class="mos-banner">MOS</div>
+          <div class="listen-banner">LISTENING</div>
+          <div class="free-mark">FREE</div>
+          <div class="row prod">
+            <div class="cell"><div class="label">Production</div><div class="value" contenteditable="true" data-k="prod">UNTITLED</div></div>
+            <div class="cell"><div class="label">Date</div><div class="value" contenteditable="true" data-k="date"></div></div>
+          </div>
+          <div class="row ids">
+            <div class="cell"><div class="label">Roll</div><div class="value" contenteditable="true" data-k="roll">A001</div></div>
+            <div class="cell"><div class="label">Scene</div><div class="value" contenteditable="true" data-k="scene">1</div></div>
+            <div class="cell"><div class="label">Take</div><div class="value" contenteditable="true" data-k="take">1</div></div>
+          </div>
+          <div class="row crew">
+            <div class="cell"><div class="label">Director</div><div class="value" contenteditable="true" data-k="dir"></div></div>
+            <div class="cell"><div class="label">Camera</div><div class="value" contenteditable="true" data-k="cam"></div></div>
+          </div>
+          <div class="row meta">
+            <div class="cell"><div class="label">FPS</div><div class="value" contenteditable="true" data-k="fps">24</div></div>
+            <div class="cell"><div class="label">Int / Ext</div><div class="value" contenteditable="true" data-k="ie">INT</div></div>
+            <div class="cell"><div class="label">Day / Night</div><div class="value" contenteditable="true" data-k="dn">DAY</div></div>
+            <div class="cell"><div class="label">Sound</div><div class="value" id="soundLabel">SYNC</div></div>
+          </div>
+          <div class="tc-row"><div id="status">READY</div><div class="tc" id="tc">00:00:00:00</div></div>
+        </div>
+        <div class="expire-banner" id="expireBanner">Day expired after this shot — unlock again from Home</div>
+        <div class="controls">
+          <button class="ctrl listen" id="btnListen">Listen</button>
+          <button class="ctrl mark" id="btnMark">Mark</button>
+          <button class="ctrl" id="btnMos">MOS</button>
+          <button class="ctrl" id="btnTail">Tail</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen" id="view-train">
+      <div class="topbar"><span>Train mark sound</span></div>
+      <div class="list settings">
+        <p class="fine">Record the same sound 5 times — a whistle, a snap, a clicker, a spoken “mark,” or your sticks. The app stores a fingerprint, not a recording. Then Listen will wait for that sound.</p>
+        <div class="dots" id="trainDots"></div>
+        <button class="big primary" id="btnRec">Record sample 1 of 5</button>
+        <button class="big ghost" id="btnTest" disabled>Test listen</button>
+        <div class="matchbox" id="matchBox">NO SOUND YET</div>
+        <p class="fine" id="trainStatus">Mic needed. Same catch as Listen: Safari over https or Home Screen from a hosted page.</p>
+        <button class="big ghost" id="btnClearSound">Forget trained sound</button>
+      </div>
+    </section>
+
+    <section class="screen" id="view-log">
+      <div class="topbar"><span>Shot log</span><button class="ctrl" id="btnExport" style="padding:6px 10px">Export CSV</button></div>
+      <div class="list" id="logList"></div>
+    </section>
+
+    <section class="screen" id="view-settings">
+      <div class="topbar"><span>Settings</span></div>
+      <div class="list settings">
+        <label>Project name</label>
+        <input id="setProject" placeholder="My film" />
+        <label>Listen mode</label>
+        <select id="setMode">
+          <option value="generic">Generic clap / snap</option>
+          <option value="trained">Trained mark sound</option>
+        </select>
+        <label>Clap sensitivity</label>
+        <input id="setSens" type="range" min="1" max="10" value="6" />
+        <p class="fine">Higher = easier to trigger. Lower if doors, shouting, or wind keep false-firing. Always tap Listen before you hold the board up.</p>
+        <label>Voice mark</label>
+        <select id="setVoice">
+          <option value="off">Off</option>
+          <option value="on">Speak scene and take</option>
+        </select>
+        <label>Donation link</label>
+        <input id="setDonate" placeholder="https://ko-fi.com/yourname" />
+        <p class="fine">Paste your Ko-fi, PayPal.me, Cash App, or Stripe link. Tips are separate from the daily ads. We cannot verify a payment from a web page — after you tip, tap the button on Home if you want today unlocked without ads.</p>
+        <label>How this stays free</label>
+        <p class="fine">Each morning: watch 3 short ads, then the slate is unlocked for 24 hours. The board itself never shows ads. This build uses placeholder ads. Real AdMob rewarded video needs a native iOS/Android wrapper and your publisher account.</p>
+        <label>Privacy</label>
+        <p class="fine">Microphone is used only while Listen or Train is armed. Matching runs on this phone. Fingerprints and the shot log live in localStorage. No raw recordings, no account, no cloud, no analytics. Placeholder ads in this web build are not AdMob and never appear on the board the camera sees. External tips are not tax-deductible.</p>
+        <p class="fine">Dummy slate, not timecode. Do not treat the clock as jammed LTC.</p>
+        <button class="big ghost" id="btnClearLog" style="margin-top:16px">Clear shot log</button>
+      </div>
+    </section>
+
+    <nav class="nav">
+      <button data-go="home">Home</button>
+      <button data-go="slate">Slate</button>
+      <button data-go="train">Train</button>
+      <button data-go="log">Log</button>
+      <button data-go="settings">More</button>
+    </nav>
+  </div>
+
+  <script>
+    const STORE = "slate-app-v2";
+    const LETTERS = ["","A","B","C","D","E","F","G","H","J","K","L","M","N","P","Q","R","S","T"];
+    const BANDS = 16;
+    const $ = (id) => document.getElementById(id);
+    const field = (k) => document.querySelector(`[data-k="${k}"]`);
+
+    let audio = null, mos = false, tail = false, clapping = false, wake = null;
+    let listenOn = false, listenTimer = null, micStream = null, analyser = null, listenRaf = null;
+    let baseline = 0.004, ignoreUntil = 0, sessionGrace = false;
+    let recBusy = false;
+    let state = {
+      fields: { prod: "UNTITLED", roll: "A001", scene: "1", take: "1", dir: "", cam: "", fps: "24", ie: "INT", dn: "DAY", date: "" },
+      log: [],
+      project: "",
+      voice: "off",
+      donate: "",
+      proUntil: 0,
+      sens: 6,
+      mode: "generic",
+      prints: []
+    };
+
+    function isPro() { return Date.now() < (state.proUntil || 0); }
+    function hoursLeft() {
+      const ms = (state.proUntil || 0) - Date.now();
+      if (ms <= 0) return 0;
+      return Math.max(0.1, ms / 3600000);
+    }
+    function todayStr() {
+      const d = new Date();
+      return `${String(d.getMonth()+1).padStart(2,"0")}.${String(d.getDate()).padStart(2,"0")}.${d.getFullYear()}`;
+    }
+    function persist() { localStorage.setItem(STORE, JSON.stringify(state)); }
+    function meanPrint() {
+      if (!state.prints.length) return null;
+      const n = state.prints[0].length;
+      const out = new Array(n).fill(0);
+      state.prints.forEach((p) => { for (let i = 0; i < n; i++) out[i] += p[i]; });
+      const inv = 1 / state.prints.length;
+      for (let i = 0; i < n; i++) out[i] *= inv;
+      return out;
+    }
+    function cosine(a, b) {
+      let dot = 0, na = 0, nb = 0;
+      for (let i = 0; i < a.length; i++) { dot += a[i]*b[i]; na += a[i]*a[i]; nb += b[i]*b[i]; }
+      if (!na || !nb) return 0;
+      return dot / (Math.sqrt(na) * Math.sqrt(nb));
+    }
+    function fingerprintFrom(freq) {
+      const vec = [];
+      const step = Math.floor(freq.length / BANDS);
+      for (let b = 0; b < BANDS; b++) {
+        let s = 0;
+        for (let i = b * step; i < (b + 1) * step; i++) s += freq[i];
+        vec.push(Math.log1p(s / step));
+      }
+      const max = Math.max.apply(null, vec) || 1;
+      return vec.map((v) => v / max);
+    }
+
+    function load() {
+      try {
+        const raw = localStorage.getItem(STORE) || localStorage.getItem("slate-app-v1");
+        if (raw) Object.assign(state, JSON.parse(raw));
+      } catch (e) {}
+      Object.entries(state.fields || {}).forEach(([k,v]) => { const el = field(k); if (el) el.textContent = v; });
+      if (!field("date").textContent.trim()) field("date").textContent = todayStr();
+      $("setProject").value = state.project || "";
+      $("setVoice").value = state.voice || "off";
+      $("setDonate").value = state.donate || "";
+      $("setSens").value = state.sens || 6;
+      $("setMode").value = state.prints && state.prints.length >= 3 ? (state.mode || "trained") : "generic";
+      paintPro();
+      renderLog();
+      renderDots();
+    }
+    function saveFields() {
+      document.querySelectorAll("[data-k]").forEach((el) => { state.fields[el.dataset.k] = el.textContent.trim(); });
+      persist();
+    }
+
+    function paintPro() {
+      const on = isPro();
+      $("board").classList.toggle("pro", on);
+      $("homeBadge").textContent = on ? "OPEN 24H" : "LOCKED";
+      $("homeBadge").classList.toggle("pro", on);
+      $("btnAd").style.display = on ? "none" : "block";
+      $("btnOpen").disabled = false;
+      const left = hoursLeft();
+      $("homeStatus").textContent = on
+        ? `Unlocked for ${left.toFixed(1)} more hours. Listen, mark, train, and log are on.`
+        : "Locked for the day. Watch 3 short ads, or leave a donation and come back.";
+      $("slateLock").classList.toggle("on", !on && !sessionGrace);
+      $("expireBanner").classList.toggle("on", sessionGrace && !on);
+      $("trainStatus").textContent = state.prints.length >= 5
+        ? `Trained on ${state.prints.length} samples. Test listen, then set Listen mode to Trained in More.`
+        : `Recorded ${state.prints.length} of 5. Same sound each time.`;
+      $("btnTest").disabled = state.prints.length < 3;
+      $("matchBox").textContent = state.prints.length < 3 ? "NO SOUND YET" : "READY TO TEST";
+      $("matchBox").className = "matchbox";
+    }
+
+    function show(name) {
+      if (name !== "slate") stopListen();
+      if ((name === "slate" || name === "train" || name === "log") && !isPro() && !sessionGrace) {
+        if (name !== "home") {
+          document.querySelectorAll(".screen").forEach((s) => s.classList.toggle("on", s.id === "view-home"));
+          document.querySelectorAll(".nav button").forEach((b) => b.classList.toggle("here", b.dataset.go === "home"));
+          $("homeStatus").textContent = "Watch the 3 ads first. Then slate, train, and log stay open 24 hours.";
+          return;
+        }
+      }
+      document.querySelectorAll(".screen").forEach((s) => s.classList.toggle("on", s.id === "view-" + name));
+      document.querySelectorAll(".nav button").forEach((b) => b.classList.toggle("here", b.dataset.go === name));
+      if (name === "log") renderLog();
+      if (name === "train") renderDots();
+    }
+
+    async function unlockAudio() {
+      if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+      if (audio.state === "suspended") await audio.resume();
+      try { wake = await navigator.wakeLock.request("screen"); } catch (e) {}
+    }
+
+    function grantDay() {
+      state.proUntil = Date.now() + 24 * 60 * 60 * 1000;
+      sessionGrace = false;
+      persist();
+      paintPro();
+    }
+
+    const AD_MS = 8000;
+    const AD_N = 3;
+    let adIdx = 0, adTimer = null;
+    function playAdSeries() {
+      adIdx = 0;
+      $("ad").classList.add("on");
+      $("btnAdFail").style.display = "block";
+      runAd();
+    }
+    function runAd() {
+      $("adTitle").textContent = `Ad ${adIdx + 1} of ${AD_N}`;
+      $("adCopy").textContent = "Placeholder · wire AdMob rewarded video here";
+      $("adcount").textContent = adIdx + 1 < AD_N ? "Next ad starts automatically" : "Unlocks the slate for 24 hours";
+      const bar = $("adbar");
+      bar.style.width = "0%";
+      const t0 = performance.now();
+      if (adTimer) cancelAnimationFrame(adTimer);
+      const tick = (now) => {
+        const p = Math.min(1, (now - t0) / AD_MS);
+        bar.style.width = (p * 100) + "%";
+        if (p < 1) { adTimer = requestAnimationFrame(tick); return; }
+        adIdx += 1;
+        if (adIdx < AD_N) runAd();
+        else {
+          $("ad").classList.remove("on");
+          grantDay();
+          show("slate");
+        }
+      };
+      adTimer = requestAnimationFrame(tick);
+    }
+
+    function sensThresh() {
+      const s = Number(state.sens || 6);
+      return 0.035 + (11 - s) * 0.012;
+    }
+    function stopListen() {
+      listenOn = false;
+      recBusy = false;
+      $("btnListen").classList.remove("hot");
+      $("btnListen").textContent = "Listen";
+      $("board").classList.remove("listening");
+      if (listenTimer) { clearTimeout(listenTimer); listenTimer = null; }
+      if (listenRaf) { cancelAnimationFrame(listenRaf); listenRaf = null; }
+      if (micStream) { micStream.getTracks().forEach((t) => t.stop()); micStream = null; }
+    }
+
+    async function openMic() {
+      await unlockAudio();
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+      });
+      const src = audio.createMediaStreamSource(stream);
+      const an = audio.createAnalyser();
+      an.fftSize = 1024;
+      an.smoothingTimeConstant = 0;
+      src.connect(an);
+      return { stream, an };
+    }
+
+    function collectPrint(an, frames) {
+      const freq = new Uint8Array(an.frequencyBinCount);
+      const acc = new Array(BANDS).fill(0);
+      return new Promise((resolve) => {
+        let n = 0;
+        const step = () => {
+          an.getByteFrequencyData(freq);
+          const fp = fingerprintFrom(freq);
+          for (let i = 0; i < BANDS; i++) acc[i] += fp[i];
+          n += 1;
+          if (n >= frames) resolve(acc.map((v) => v / n));
+          else requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+      });
+    }
+
+    async function startListen(opts) {
+      const test = !!(opts && opts.test);
+      const train = !!(opts && opts.train);
+      if (mos && !test && !train) return;
+      if (listenOn && !test && !train) { stopListen(); return; }
+      if (!isPro() && !sessionGrace && !test && !train) { show("home"); return; }
+      try {
+        const mic = await openMic();
+        micStream = mic.stream;
+        analyser = mic.an;
+      } catch (err) {
+        const msg = "Microphone permission is required. Open this in Safari over https, or Add to Home Screen from a hosted page. A file from Files often cannot use the mic.";
+        if ($("status")) $("status").textContent = "MIC BLOCKED";
+        $("trainStatus").textContent = msg;
+        alert(msg);
+        return;
+      }
+      const time = new Float32Array(analyser.fftSize);
+      const freq = new Uint8Array(analyser.frequencyBinCount);
+      baseline = 0.004;
+      listenOn = true;
+      if (!test && !train) {
+        $("btnListen").classList.add("hot");
+        $("btnListen").textContent = "Listening";
+        $("board").classList.add("listening");
+        $("status").textContent = "LISTENING";
+      }
+      if (test) {
+        $("matchBox").textContent = "LISTENING…";
+        $("matchBox").className = "matchbox";
+      }
+      listenTimer = setTimeout(() => {
+        if (test) { $("matchBox").textContent = "NO MATCH"; $("matchBox").className = "matchbox no"; }
+        if (train) { $("trainStatus").textContent = "No sound heard. Try closer to the mic."; recBusy = false; $("btnRec").disabled = false; }
+        stopListen();
+      }, train || test ? 8000 : 12000);
+
+      const useTrained = (state.mode === "trained" && state.prints.length >= 3) || test || train;
+      const target = meanPrint();
+      let capturing = false;
+
+      const tickMic = async () => {
+        if (!listenOn) return;
+        analyser.getFloatTimeDomainData(time);
+        analyser.getByteFrequencyData(freq);
+        let rms = 0;
+        for (let i = 0; i < time.length; i++) rms += time[i] * time[i];
+        rms = Math.sqrt(rms / time.length);
+        baseline = baseline * 0.96 + rms * 0.04;
+        let hi = 0;
+        const start = Math.floor(freq.length * 0.25);
+        for (let i = start; i < freq.length; i++) hi += freq[i];
+        hi /= (freq.length - start);
+        const spike = rms > Math.max(baseline * (3.2 + (10 - (state.sens || 6)) * 0.15), sensThresh());
+        const bright = hi > 16 + (10 - (state.sens || 6)) * 2;
+        const now = performance.now();
+        if (spike && bright && now > ignoreUntil && rms > baseline * 2.4 && !capturing) {
+          ignoreUntil = now + 900;
+          capturing = true;
+          if (useTrained && target) {
+            const fp = await collectPrint(analyser, 18);
+            const score = cosine(fp, target);
+            if (train) {
+              state.prints.push(fp);
+              if (state.prints.length > 8) state.prints = state.prints.slice(-8);
+              if (state.prints.length >= 5) state.mode = "trained";
+              persist();
+              renderDots();
+              paintPro();
+              $("trainStatus").textContent = `Got sample ${state.prints.length}. ${state.prints.length >= 5 ? "Done. Test listen next." : "Same sound again."}`;
+              recBusy = false;
+              $("btnRec").disabled = false;
+              $("btnRec").textContent = state.prints.length >= 5 ? "Record extra sample" : `Record sample ${state.prints.length + 1} of 5`;
+              stopListen();
+              return;
+            }
+            if (test) {
+              const ok = score >= 0.88;
+              $("matchBox").textContent = ok ? `MATCH  ${score.toFixed(2)}` : `NO MATCH  ${score.toFixed(2)}`;
+              $("matchBox").className = "matchbox " + (ok ? "yes" : "no");
+              stopListen();
+              return;
+            }
+            if (score >= 0.88) {
+              stopListen();
+              mark({ heard: true });
+              return;
+            }
+            capturing = false;
+            ignoreUntil = performance.now() + 250;
+          } else {
+            stopListen();
+            mark({ heard: true });
+            return;
+          }
+        }
+        listenRaf = requestAnimationFrame(tickMic);
+      };
+      listenRaf = requestAnimationFrame(tickMic);
+    }
+
+    function playClap() {
+      if (!audio) return;
+      const t = audio.currentTime;
+      const master = audio.createGain();
+      master.connect(audio.destination);
+      const osc = audio.createOscillator();
+      const og = audio.createGain();
+      osc.frequency.value = 1000;
+      og.gain.setValueAtTime(0.28, t);
+      og.gain.exponentialRampToValueAtTime(0.001, t + 0.042);
+      osc.connect(og).connect(master);
+      osc.start(t); osc.stop(t + 0.045);
+      const n = audio.sampleRate * 0.055;
+      const buf = audio.createBuffer(1, n, audio.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 2);
+      const src = audio.createBufferSource(); src.buffer = buf;
+      const ng = audio.createGain();
+      const hp = audio.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 1200;
+      ng.gain.setValueAtTime(0.55, t);
+      ng.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+      src.connect(hp).connect(ng).connect(master);
+      src.start(t);
+    }
+
+    function speakMark() {
+      if (state.voice !== "on" || !window.speechSynthesis) return;
+      const scene = field("scene").textContent.trim();
+      const take = field("take").textContent.trim();
+      const u = new SpeechSynthesisUtterance(`Scene ${scene}, take ${take}, mark`);
+      u.rate = 1.05; window.speechSynthesis.cancel(); window.speechSynthesis.speak(u);
+    }
+
+    function bumpTake() {
+      const el = field("take");
+      const n = parseInt(el.textContent, 10);
+      el.textContent = String((isNaN(n) ? 1 : n) + 1);
+      saveFields();
+    }
+    function bumpLetter() {
+      const el = field("scene");
+      const raw = el.textContent.trim().toUpperCase();
+      const m = raw.match(/^(\d+)([A-Z]*)$/);
+      if (!m) { el.textContent = raw + "A"; saveFields(); return; }
+      const num = m[1];
+      const cur = m[2] || "";
+      const idx = LETTERS.indexOf(cur);
+      el.textContent = num + (LETTERS[Math.min(idx + 1, LETTERS.length - 1)] || "A");
+      field("take").textContent = "1";
+      saveFields();
+    }
+
+    function mark(opts) {
+      if (clapping) return;
+      if (!isPro() && !sessionGrace) { show("home"); return; }
+      if (!isPro()) sessionGrace = true;
+      clapping = true;
+      unlockAudio();
+      $("status").textContent = mos ? "MOS" : (opts && opts.heard ? "HEARD" : "MARK");
+      $("sticks").classList.add("closed");
+      if (!mos) {
+        if (!(opts && opts.heard)) playClap();
+        speakMark();
+        const f = $("flash"); f.classList.remove("go"); void f.offsetWidth; f.classList.add("go");
+        try { navigator.vibrate && navigator.vibrate(30); } catch (e) {}
+      }
+      const row = {
+        t: new Date().toISOString(),
+        prod: field("prod").textContent.trim(),
+        roll: field("roll").textContent.trim(),
+        scene: field("scene").textContent.trim(),
+        take: field("take").textContent.trim(),
+        fps: field("fps").textContent.trim(),
+        mos: mos,
+        tail: tail,
+        heard: !!(opts && opts.heard)
+      };
+      state.log.unshift(row);
+      persist();
+      setTimeout(() => {
+        $("sticks").classList.remove("closed");
+        if (!mos) bumpTake();
+        $("status").textContent = "READY";
+        clapping = false;
+        paintPro();
+      }, 900);
+    }
+
+    function renderLog() {
+      const box = $("logList");
+      if (!state.log.length) { box.innerHTML = "<p class='fine'>No takes yet.</p>"; return; }
+      box.innerHTML = state.log.slice(0, 80).map((s) =>
+        `<div class="shot"><b>${s.scene} · ${s.take}</b><div class="sub">${s.roll} · ${s.prod} · ${s.mos ? "MOS" : (s.heard ? "HEARD" : "MARK")}${s.tail ? " · TAIL" : ""} · ${s.t.replace("T"," ").slice(0,19)}</div></div>`
+      ).join("");
+    }
+    function renderDots() {
+      const n = 5;
+      $("trainDots").innerHTML = Array.from({length: n}, (_, i) =>
+        `<div class="dot${i < state.prints.length ? " got" : ""}${i === state.prints.length && state.prints.length < n ? " now" : ""}"></div>`
+      ).join("");
+    }
+
+    function tickClock() {
+      const fps = parseFloat(field("fps").textContent) || 24;
+      const d = new Date();
+      const f = Math.floor(d.getMilliseconds() / (1000 / fps));
+      $("tc").textContent =
+        String(d.getHours()).padStart(2,"0") + ":" +
+        String(d.getMinutes()).padStart(2,"0") + ":" +
+        String(d.getSeconds()).padStart(2,"0") + ":" +
+        String(f).padStart(2,"0");
+      requestAnimationFrame(tickClock);
+    }
+
+    $("btnOpen").addEventListener("click", () => show("slate"));
+    $("btnAd").addEventListener("click", playAdSeries);
+    $("btnAdFail").addEventListener("click", () => {
+      $("ad").classList.remove("on");
+      grantDay();
+      show("slate");
+    });
+    $("btnTip").addEventListener("click", () => {
+      const url = (state.donate || "").trim();
+      if (url) window.open(url, "_blank");
+      else alert("Paste your Ko-fi, PayPal.me, or Cash App link in More → Donation link.");
+      if (confirm("Did you send a donation? Unlock the slate for 24 hours.")) grantDay();
+    });
+    $("btnMark").addEventListener("click", () => mark());
+    $("btnListen").addEventListener("click", () => startListen());
+    $("sticks").addEventListener("click", () => { if (!mos) mark(); });
+    $("btnMos").addEventListener("click", () => {
+      mos = !mos;
+      $("btnMos").classList.toggle("on", mos);
+      $("board").classList.toggle("mos-on", mos);
+      $("soundLabel").textContent = mos ? "MOS" : "SYNC";
+    });
+    $("btnTail").addEventListener("click", () => {
+      tail = !tail;
+      $("btnTail").classList.toggle("on", tail);
+      $("board").classList.toggle("tail", tail);
+    });
+    $("btnRec").addEventListener("click", () => {
+      if (recBusy) return;
+      recBusy = true;
+      $("btnRec").disabled = true;
+      $("trainStatus").textContent = "Make the sound now…";
+      startListen({ train: true });
+    });
+    $("btnTest").addEventListener("click", () => startListen({ test: true }));
+    $("btnClearSound").addEventListener("click", () => {
+      if (!confirm("Forget the trained mark sound?")) return;
+      state.prints = [];
+      state.mode = "generic";
+      persist();
+      $("setMode").value = "generic";
+      $("btnRec").textContent = "Record sample 1 of 5";
+      renderDots();
+      paintPro();
+    });
+    $("btnExport").addEventListener("click", () => {
+      if (!isPro() && !sessionGrace) { show("home"); return; }
+      const header = "time,prod,roll,scene,take,fps,mos,tail,heard\n";
+      const body = state.log.map((s) => [s.t,s.prod,s.roll,s.scene,s.take,s.fps,s.mos,s.tail,s.heard].join(",")).join("\n");
+      const blob = new Blob([header + body], { type: "text/csv" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "slate-log.csv";
+      a.click();
+    });
+    $("btnClearLog").addEventListener("click", () => {
+      if (!confirm("Clear the shot log?")) return;
+      state.log = []; persist(); renderLog();
+    });
+    $("setProject").addEventListener("input", () => { state.project = $("setProject").value; persist(); });
+    $("setVoice").addEventListener("change", () => { state.voice = $("setVoice").value; persist(); });
+    $("setDonate").addEventListener("input", () => { state.donate = $("setDonate").value; persist(); });
+    $("setSens").addEventListener("input", () => { state.sens = Number($("setSens").value); persist(); });
+    $("setMode").addEventListener("change", () => { state.mode = $("setMode").value; persist(); });
+
+    document.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => show(b.dataset.go)));
+    document.querySelectorAll("[data-k]").forEach((el) => {
+      el.addEventListener("focus", () => document.body.classList.add("editing"));
+      el.addEventListener("blur", () => { document.body.classList.remove("editing"); saveFields(); });
+    });
+
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("sw.js").catch(() => {});
+    }
+
+    load();
+    tickClock();
+  </script>
+</body>
+</html>
