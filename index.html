@@ -2237,23 +2237,33 @@
     }
     /** Master Broadcast / freq test — same speaker tone path. */
     function playFreqTone(hz, ms) { return playToneHz(hz, ms); }
-    function broadcastActiveFreq() {
+    /** Master emit: frequency tone or generic clap for sound marks. Returns Promise. */
+    function emitActiveMark() {
       const m = activeMark();
+      if (m && m.kind === "frequency" && m.hz) {
+        const ms = 1500;
+        const btn = $("btnBroadcast");
+        if (btn) btn.classList.add("hot");
+        return playFreqTone(m.hz, ms).then(() => {
+          showToast("Emitting " + Math.round(m.hz) + " Hz · followers Listen to sync");
+          setTimeout(() => { if (btn) btn.classList.remove("hot"); }, ms);
+        }).catch(() => {
+          if (btn) btn.classList.remove("hot");
+          showToast("Speaker blocked — tap Mark again after unlocking audio.");
+          throw new Error("speaker");
+        });
+      }
+      playClap();
+      return Promise.resolve();
+    }
+    function broadcastActiveFreq() {
       if (!isMaster()) return;
+      const m = activeMark();
       if (!m || m.kind !== "frequency" || !m.hz) {
-        showToast("Choose frequency first, then Broadcast.");
+        showToast("Choose frequency first, then Broadcast / Mark.");
         return;
       }
-      const btn = $("btnBroadcast");
-      if (btn) btn.classList.add("hot");
-      const ms = 1500;
-      playFreqTone(m.hz, ms).then(() => {
-        showToast("Broadcasting " + Math.round(m.hz) + " Hz · followers Listen · lock / Listen to sync");
-        setTimeout(() => { if (btn) btn.classList.remove("hot"); }, ms);
-      }).catch(() => {
-        if (btn) btn.classList.remove("hot");
-        showToast("Speaker blocked — tap again after unlocking audio.");
-      });
+      emitActiveMark();
     }
     async function scanAmbientFrequency() {
       $("freqScanStatus").textContent = "Scanning ambient… hold still (~1.5s)";
@@ -2458,7 +2468,11 @@
       } else $("status").textContent = "MARK";
       $("sticks").classList.add("closed");
       if (!mos) {
-        if (!(opts && opts.heard)) playClap();
+        // Master Mark must emit the active mark (freq tone or clap) so followers can hear it.
+        if (!(opts && opts.heard)) {
+          if (isMaster()) emitActiveMark();
+          else playClap();
+        }
         speakMark();
         const f = $("flash"); f.classList.remove("go"); void f.offsetWidth; f.classList.add("go");
         try { navigator.vibrate && navigator.vibrate(30); } catch (e) {}
