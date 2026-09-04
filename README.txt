@@ -21,9 +21,10 @@ LISTEN
   Trained mode: only the sound you enrolled.
 
 TRAIN A CUSTOM MARK
-  Train tab → record the same sound 5 times (whistle, snap, clicker,
-  spoken "mark", your sticks). Test listen. Then set Listen mode to
-  Trained in More. Fingerprints only — no raw audio is stored.
+  Train tab → Record → “Ready to record your mark?” → Yes → countdown
+  5…1 → mic records ~1 second at RECORD (mic off during 5–2). Repeat
+  5 times. Test listen. Match threshold (More) sets how strict cosine
+  match is (lower = looser). Fingerprints only — no raw audio.
 
 MARK
   Tap Mark or the sticks if Listen misses. Always available once the
@@ -34,7 +35,8 @@ MIC
   Opening the raw file from Files often cannot use the microphone.
 
 PRIVACY
-  Mic is on only while Listen or Train is armed. Matching is on-device.
+  Mic is on only while Listen is armed, or during the ~1s Train capture
+  (not during the countdown). Matching is on-device.
   Fingerprints and the shot log stay in localStorage. No raw enrollment
   audio. No account, cloud, or analytics. Placeholder ads are not AdMob.
 
@@ -55,9 +57,9 @@ IPAD MVP
 
 MORNING SETUP
   After you unlock the day (ads or honor tip), a first-sign-in flow opens.
-  Step 1 — Train Your Mark: record the same whistle / clap / tone / word
-  (or sticks) five times. The app stores a fingerprint, not a recording.
-  That print is the mark Listen will fire on.
+  Step 1 — Train Your Mark: Record → ready Yes → countdown 5…1 → ~1s
+  capture at RECORD (five times). Fingerprint only, not a recording.
+  That print is the mark Listen will fire on. Match threshold in More.
   Step 2 — Test: make the sound once; MATCH means you are ready.
   Step 3 — Board: Listen → hold up → make the mark → take is logged.
   You can skip to generic clap, or keep yesterday’s mark if you already trained.

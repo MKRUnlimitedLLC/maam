@@ -215,6 +215,35 @@
       border-radius: 10px; display: block;
     }
     .setup .stack { margin-top: 4px; }
+
+    #trainOverlay {
+      display: none; position: fixed; inset: 0; z-index: 50;
+      background: rgba(17,17,17,.94); color: #f3efe6;
+      align-items: center; justify-content: center; flex-direction: column;
+      padding: 24px; text-align: center;
+    }
+    #trainOverlay.on { display: flex; }
+    #trainOverlay h2 {
+      font-size: clamp(22px, 5vw, 32px); letter-spacing: 0.08em;
+      text-transform: uppercase; margin: 0 0 20px; color: #f3efe6;
+    }
+    #trainOverlay .ov-btns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    #trainOverlay .ov-btns button {
+      appearance: none; border: 0; border-radius: 10px;
+      padding: 16px 28px; font-size: 16px; font-weight: 700;
+      letter-spacing: 0.1em; text-transform: uppercase; min-width: 120px;
+    }
+    #trainOverlay .ov-yes { background: #f3efe6; color: #111; }
+    #trainOverlay .ov-no { background: #222; color: #eee; border: 1px solid #444; }
+    #trainCountNum {
+      font-size: clamp(96px, 28vw, 200px); font-weight: 900;
+      line-height: 1; letter-spacing: 0.04em; color: #f3efe6;
+      font-variant-numeric: tabular-nums;
+    }
+    #trainCountNum.rec { color: #2ecc71; font-size: clamp(48px, 14vw, 96px); letter-spacing: 0.12em; }
+    #trainCountHint { color: #aaa; font-size: 14px; letter-spacing: 0.08em; margin-top: 16px; max-width: 360px; }
+    #trainReady, #trainCount { display: none; flex-direction: column; align-items: center; }
+    #trainReady.on, #trainCount.on { display: flex; }
   </style>
 </head>
 <body>
@@ -227,6 +256,20 @@
     <div class="progress"><i id="adbar"></i></div>
     <div id="adcount">Unlocks the slate for 24 hours</div>
     <button class="big ghost" id="btnAdFail" style="display:none;max-width:420px">Ads would not load · continue</button>
+  </div>
+
+  <div id="trainOverlay" aria-live="polite">
+    <div id="trainReady">
+      <h2>Ready to record your mark?</h2>
+      <div class="ov-btns">
+        <button type="button" class="ov-yes" id="btnTrainYes">Yes</button>
+        <button type="button" class="ov-no" id="btnTrainNo">No</button>
+      </div>
+    </div>
+    <div id="trainCount">
+      <div id="trainCountNum">5</div>
+      <p id="trainCountHint">Make your sound when you see RECORD</p>
+    </div>
   </div>
 
   <div id="app">
@@ -310,7 +353,7 @@
           <p class="lede" style="font-size:15px;max-width:none">Record the sound you will use as the mark. Whistle, clap, snap, tone, clicker, spoken word, or real sticks. The app listens and builds a print (waveform bands). That print is the mark: when Listen hears it, sticks slam and the take is logged.</p>
           <canvas class="wave" id="setupWave" width="560" height="72" aria-label="Mark fingerprint"></canvas>
           <div class="dots" id="setupDots"></div>
-          <p class="fine" id="setupTrainStatus">Tap Record, then make the same sound. Same room noise helps. Five samples.</p>
+          <p class="fine" id="setupTrainStatus">Tap Record → ready → countdown → make the sound at RECORD. Five samples.</p>
           <div class="stack">
             <button class="big primary" id="btnSetupRec">Record sample 1 of 5</button>
             <button class="big ghost" id="btnSetupKeep" style="display:none">Keep yesterday’s mark</button>
@@ -344,7 +387,7 @@
     <section class="screen" id="view-train">
       <div class="topbar"><span>Train mark sound</span></div>
       <div class="list settings">
-        <p class="fine">Record the same sound 5 times — a whistle, a snap, a clicker, a spoken “mark,” or your sticks. The app stores a fingerprint, not a recording. Then Listen will wait for that sound.</p>
+        <p class="fine">Record the same sound 5 times — a whistle, a snap, a clicker, a spoken “mark,” or your sticks. Tap Record → ready prompt → countdown 5…1 → mic records ~1s. Fingerprints only. Match strictness is under More → Match threshold.</p>
         <div class="dots" id="trainDots"></div>
         <button class="big primary" id="btnRec">Record sample 1 of 5</button>
         <button class="big ghost" id="btnTest" disabled>Test listen</button>
@@ -372,6 +415,9 @@
         <label>Clap sensitivity</label>
         <input id="setSens" type="range" min="1" max="10" value="6" />
         <p class="fine">Higher = easier to trigger. Lower if doors, shouting, or wind keep false-firing. Always tap Listen before you hold the board up.</p>
+        <label>Match threshold (lower = looser)</label>
+        <input id="setMatchTol" type="range" min="0.75" max="0.95" step="0.01" value="0.88" />
+        <p class="fine" id="matchTolHint">Cosine match for trained Listen. Current: <b id="matchTolVal">0.88</b>. Lower = easier match; higher = stricter.</p>
         <label>Voice mark</label>
         <select id="setVoice">
           <option value="off">Off</option>
@@ -409,6 +455,10 @@
     let listenOn = false, listenTimer = null, micStream = null, analyser = null, listenRaf = null;
     let baseline = 0.004, ignoreUntil = 0, sessionGrace = false;
     let recBusy = false;
+    let trainCdTimer = null;
+    let trainCdLeft = 0;
+    const TRAIN_MS = 1000;
+    const TRAIN_RMS_FLOOR = 0.008;
     let state = {
       fields: { prod: "UNTITLED", roll: "A001", scene: "1", take: "1", dir: "", cam: "", fps: "24", ie: "INT", dn: "DAY", date: "" },
       log: [],
@@ -417,6 +467,7 @@
       donate: "",
       proUntil: 0,
       sens: 6,
+      matchTol: 0.88,
       mode: "generic",
       prints: [],
       needMorningSetup: false
@@ -471,6 +522,10 @@
       $("setVoice").value = state.voice || "off";
       $("setDonate").value = state.donate || "";
       $("setSens").value = state.sens || 6;
+      if (typeof state.matchTol !== "number" || isNaN(state.matchTol)) state.matchTol = 0.88;
+      state.matchTol = Math.min(0.95, Math.max(0.75, state.matchTol));
+      $("setMatchTol").value = state.matchTol;
+      $("matchTolVal").textContent = Number(state.matchTol).toFixed(2);
       $("setMode").value = state.prints && state.prints.length >= 3 ? (state.mode || "trained") : "generic";
       paintPro();
       renderLog();
@@ -503,6 +558,7 @@
     }
 
     function show(name) {
+      cancelTrainOverlay(false);
       if (name !== "slate") stopListen();
       if ((name === "slate" || name === "train" || name === "log" || name === "setup") && !isPro() && !sessionGrace) {
         if (name !== "home") {
@@ -555,7 +611,7 @@
       $("btnSetupKeep").style.display = n >= 3 ? "block" : "none";
       $("setupTrainStatus").textContent = n >= 5
         ? "Print ready. That fingerprint is today’s mark. Next: test it."
-        : (n ? `Got ${n} of 5. Same sound again — whistle, clap, tone, or word.` : "Tap Record, then make the mark sound once.");
+        : (n ? `Got ${n} of 5. Same sound again — countdown then RECORD.` : "Tap Record → Yes → countdown → make the sound at RECORD.");
       drawSetupWave(meanPrint());
     }
     function drawSetupWave(vec) {
@@ -628,6 +684,11 @@
       const s = Number(state.sens || 6);
       return 0.035 + (11 - s) * 0.012;
     }
+    function matchThresh() {
+      const t = Number(state.matchTol);
+      if (!isFinite(t)) return 0.88;
+      return Math.min(0.95, Math.max(0.75, t));
+    }
     function stopListen() {
       listenOn = false;
       recBusy = false;
@@ -669,12 +730,166 @@
       });
     }
 
+    function clearTrainCdTimer() {
+      if (trainCdTimer) { clearTimeout(trainCdTimer); trainCdTimer = null; }
+    }
+    function finishTrainUi(okMsg, failMsg) {
+      hideTrainOverlay();
+      recBusy = false;
+      $("btnRec").disabled = false;
+      $("btnSetupRec").disabled = false;
+      if (okMsg) {
+        $("trainStatus").textContent = okMsg;
+        if ($("view-setup").classList.contains("on")) {
+          $("setupTrainStatus").textContent = okMsg;
+          paintSetup();
+        }
+      } else if (failMsg) {
+        $("trainStatus").textContent = failMsg;
+        if ($("view-setup").classList.contains("on")) {
+          $("setupTrainStatus").textContent = failMsg;
+        }
+      }
+      $("btnRec").textContent = state.prints.length >= 5 ? "Record extra sample" : `Record sample ${state.prints.length + 1} of 5`;
+    }
+    function hideTrainOverlay() {
+      clearTrainCdTimer();
+      const ov = $("trainOverlay");
+      ov.classList.remove("on");
+      $("trainReady").classList.remove("on");
+      $("trainCount").classList.remove("on");
+      $("trainCountNum").classList.remove("rec");
+      $("trainCountNum").textContent = "5";
+      $("trainCountHint").textContent = "Make your sound when you see RECORD";
+    }
+    function cancelTrainOverlay(reenable) {
+      const wasOn = $("trainOverlay").classList.contains("on");
+      clearTrainCdTimer();
+      hideTrainOverlay();
+      if (wasOn || reenable) {
+        recBusy = false;
+        $("btnRec").disabled = false;
+        $("btnSetupRec").disabled = false;
+        if (micStream || listenOn) stopListen();
+      }
+    }
+    function openTrainReady() {
+      if (recBusy) return;
+      recBusy = true;
+      $("btnRec").disabled = true;
+      $("btnSetupRec").disabled = true;
+      clearTrainCdTimer();
+      $("trainOverlay").classList.add("on");
+      $("trainReady").classList.add("on");
+      $("trainCount").classList.remove("on");
+      $("trainCountNum").classList.remove("rec");
+      $("trainCountHint").textContent = "Make your sound when you see RECORD";
+    }
+    function startTrainCountdown() {
+      $("trainReady").classList.remove("on");
+      $("trainCount").classList.add("on");
+      $("trainCountNum").classList.remove("rec");
+      trainCdLeft = 5;
+      $("trainCountNum").textContent = String(trainCdLeft);
+      $("trainCountHint").textContent = "Make your sound when you see RECORD";
+      // Mic stays closed during 5–2; enrollSample opens it at 1 / RECORD.
+      const tick = () => {
+        trainCdLeft -= 1;
+        if (trainCdLeft > 1) {
+          $("trainCountNum").textContent = String(trainCdLeft);
+          trainCdTimer = setTimeout(tick, 1000);
+          return;
+        }
+        $("trainCountNum").textContent = "1";
+        trainCdTimer = setTimeout(() => {
+          trainCdTimer = null;
+          enrollSample();
+        }, 200);
+      };
+      trainCdTimer = setTimeout(tick, 1000);
+    }
+
+    /** Open mic only for TRAIN_MS, build fingerprint, save sample. No spike detection. */
+    async function enrollSample() {
+      $("trainCountNum").textContent = "RECORD";
+      $("trainCountNum").classList.add("rec");
+      $("trainCountHint").textContent = "LISTENING… make your mark sound now";
+      $("trainStatus").textContent = "Recording 1s…";
+      if ($("view-setup").classList.contains("on")) $("setupTrainStatus").textContent = "Recording 1s…";
+      try {
+        const mic = await openMic();
+        micStream = mic.stream;
+        analyser = mic.an;
+      } catch (err) {
+        const msg = "Microphone permission is required. Open this in Safari over https, or Add to Home Screen from a hosted page. A file from Files often cannot use the mic.";
+        hideTrainOverlay();
+        finishTrainUi(null, msg);
+        if ($("status")) $("status").textContent = "MIC BLOCKED";
+        alert(msg);
+        return;
+      }
+      const time = new Float32Array(analyser.fftSize);
+      const freq = new Uint8Array(analyser.frequencyBinCount);
+      listenOn = true;
+      const t0 = performance.now();
+      let peakRms = 0;
+      let frames = 0;
+      const acc = new Array(BANDS).fill(0);
+      const tickTrain = () => {
+        if (!listenOn) {
+          finishTrainUi(null, "Recording cancelled.");
+          return;
+        }
+        analyser.getFloatTimeDomainData(time);
+        analyser.getByteFrequencyData(freq);
+        let rms = 0;
+        for (let i = 0; i < time.length; i++) rms += time[i] * time[i];
+        rms = Math.sqrt(rms / time.length);
+        if (rms > peakRms) peakRms = rms;
+        const fp = fingerprintFrom(freq);
+        for (let i = 0; i < BANDS; i++) acc[i] += fp[i];
+        frames += 1;
+        if (performance.now() - t0 < TRAIN_MS) {
+          listenRaf = requestAnimationFrame(tickTrain);
+          return;
+        }
+        stopListen();
+        if (peakRms < TRAIN_RMS_FLOOR || frames < 1) {
+          finishTrainUi(null, "No sound heard. Try closer to the mic.");
+          return;
+        }
+        const avg = acc.map((v) => v / frames);
+        state.prints.push(avg);
+        if (state.prints.length > 8) state.prints = state.prints.slice(-8);
+        if (state.prints.length >= 5) state.mode = "trained";
+        persist();
+        renderDots();
+        paintPro();
+        const ok = `Got sample ${state.prints.length}. ${state.prints.length >= 5 ? "Done. Test listen next." : "Same sound again."}`;
+        finishTrainUi(ok, null);
+      };
+      listenRaf = requestAnimationFrame(tickTrain);
+    }
+
     async function startListen(opts) {
       const test = !!(opts && opts.test);
       const train = !!(opts && opts.train);
       if (mos && !test && !train) return;
       if (listenOn && !test && !train) { stopListen(); return; }
       if (!isPro() && !sessionGrace && !test && !train) { show("home"); return; }
+      // Legacy train path: countdown UX owns enroll; if called directly, enroll 1s.
+      if (train) {
+        if (!recBusy) {
+          recBusy = true;
+          $("btnRec").disabled = true;
+          $("btnSetupRec").disabled = true;
+        }
+        $("trainOverlay").classList.add("on");
+        $("trainReady").classList.remove("on");
+        $("trainCount").classList.add("on");
+        await enrollSample();
+        return;
+      }
       try {
         const mic = await openMic();
         micStream = mic.stream;
@@ -695,7 +910,7 @@
       const freq = new Uint8Array(analyser.frequencyBinCount);
       baseline = 0.004;
       listenOn = true;
-      if (!test && !train) {
+      if (!test) {
         $("btnListen").classList.add("hot");
         $("btnListen").textContent = "Listening";
         $("board").classList.add("listening");
@@ -704,65 +919,6 @@
       if (test) {
         $("matchBox").textContent = "LISTENING…";
         $("matchBox").className = "matchbox";
-      }
-
-      // Train: fixed 2s capture — no spike detection (iPad PWA often never trips spike).
-      if (train) {
-        const recMsg = "Make the sound now… recording 2s";
-        $("trainStatus").textContent = recMsg;
-        if ($("view-setup").classList.contains("on")) $("setupTrainStatus").textContent = recMsg;
-        if (listenTimer) { clearTimeout(listenTimer); listenTimer = null; }
-        const TRAIN_MS = 2000;
-        const RMS_FLOOR = 0.008;
-        const t0 = performance.now();
-        let peakRms = 0;
-        let frames = 0;
-        const acc = new Array(BANDS).fill(0);
-        const tickTrain = () => {
-          if (!listenOn) return;
-          analyser.getFloatTimeDomainData(time);
-          analyser.getByteFrequencyData(freq);
-          let rms = 0;
-          for (let i = 0; i < time.length; i++) rms += time[i] * time[i];
-          rms = Math.sqrt(rms / time.length);
-          if (rms > peakRms) peakRms = rms;
-          const fp = fingerprintFrom(freq);
-          for (let i = 0; i < BANDS; i++) acc[i] += fp[i];
-          frames += 1;
-          if (performance.now() - t0 < TRAIN_MS) {
-            listenRaf = requestAnimationFrame(tickTrain);
-            return;
-          }
-          if (listenTimer) { clearTimeout(listenTimer); listenTimer = null; }
-          if (peakRms < RMS_FLOOR || frames < 1) {
-            $("trainStatus").textContent = "No sound heard. Try closer to the mic.";
-            recBusy = false; $("btnRec").disabled = false;
-            if ($("view-setup").classList.contains("on")) {
-              $("setupTrainStatus").textContent = "No sound heard. Closer to the mic, then Record again.";
-              $("btnSetupRec").disabled = false;
-            }
-            stopListen();
-            return;
-          }
-          const avg = acc.map((v) => v / frames);
-          state.prints.push(avg);
-          if (state.prints.length > 8) state.prints = state.prints.slice(-8);
-          if (state.prints.length >= 5) state.mode = "trained";
-          persist();
-          renderDots();
-          paintPro();
-          $("trainStatus").textContent = `Got sample ${state.prints.length}. ${state.prints.length >= 5 ? "Done. Test listen next." : "Same sound again."}`;
-          recBusy = false;
-          $("btnRec").disabled = false;
-          $("btnRec").textContent = state.prints.length >= 5 ? "Record extra sample" : `Record sample ${state.prints.length + 1} of 5`;
-          if ($("view-setup").classList.contains("on")) {
-            $("setupTrainStatus").textContent = `Got sample ${state.prints.length}. Print updated.`;
-            paintSetup();
-          }
-          stopListen();
-        };
-        listenRaf = requestAnimationFrame(tickTrain);
-        return;
       }
 
       listenTimer = setTimeout(() => {
@@ -802,7 +958,7 @@
             const fp = await collectPrint(analyser, 18);
             const score = cosine(fp, target);
             if (test) {
-              const ok = score >= 0.88;
+              const ok = score >= matchThresh();
               $("matchBox").textContent = ok ? `MATCH  ${score.toFixed(2)}` : `NO MATCH  ${score.toFixed(2)}`;
               $("matchBox").className = "matchbox " + (ok ? "yes" : "no");
               if ($("view-setup").classList.contains("on")) {
@@ -812,7 +968,7 @@
               stopListen();
               return;
             }
-            if (score >= 0.88) {
+            if (score >= matchThresh()) {
               stopListen();
               mark({ heard: true });
               return;
@@ -973,13 +1129,23 @@
       $("btnTail").classList.toggle("on", tail);
       $("board").classList.toggle("tail", tail);
     });
-    $("btnRec").addEventListener("click", () => {
-      if (recBusy) return;
-      recBusy = true;
-      $("btnRec").disabled = true;
-      $("trainStatus").textContent = "Make the sound now… recording 2s";
-      startListen({ train: true });
+    $("btnRec").addEventListener("click", () => openTrainReady());
+    $("btnTrainYes").addEventListener("click", async () => {
+      // Prime permission on Yes (user gesture), then close — mic off for countdown 5–2.
+      try {
+        const primed = await openMic();
+        primed.stream.getTracks().forEach((t) => t.stop());
+      } catch (err) {
+        const msg = "Microphone permission is required. Open this in Safari over https, or Add to Home Screen from a hosted page. A file from Files often cannot use the mic.";
+        hideTrainOverlay();
+        finishTrainUi(null, msg);
+        if ($("status")) $("status").textContent = "MIC BLOCKED";
+        alert(msg);
+        return;
+      }
+      startTrainCountdown();
     });
+    $("btnTrainNo").addEventListener("click", () => cancelTrainOverlay(true));
     $("btnTest").addEventListener("click", () => startListen({ test: true }));
     $("btnClearSound").addEventListener("click", () => {
       if (!confirm("Forget the trained mark sound?")) return;
@@ -1009,6 +1175,11 @@
     $("setVoice").addEventListener("change", () => { state.voice = $("setVoice").value; persist(); });
     $("setDonate").addEventListener("input", () => { state.donate = $("setDonate").value; persist(); });
     $("setSens").addEventListener("input", () => { state.sens = Number($("setSens").value); persist(); });
+    $("setMatchTol").addEventListener("input", () => {
+      state.matchTol = Number($("setMatchTol").value);
+      $("matchTolVal").textContent = state.matchTol.toFixed(2);
+      persist();
+    });
     $("setMode").addEventListener("change", () => { state.mode = $("setMode").value; persist(); });
 
     document.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => show(b.dataset.go)));
@@ -1017,13 +1188,7 @@
       el.addEventListener("blur", () => { document.body.classList.remove("editing"); saveFields(); });
     });
 
-    $("btnSetupRec").addEventListener("click", () => {
-      if (recBusy) return;
-      recBusy = true;
-      $("btnSetupRec").disabled = true;
-      $("setupTrainStatus").textContent = "Make the sound now… recording 2s";
-      startListen({ train: true });
-    });
+    $("btnSetupRec").addEventListener("click", () => openTrainReady());
     $("btnSetupKeep").addEventListener("click", () => {
       if (state.prints.length < 3) return;
       state.mode = "trained";
